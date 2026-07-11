@@ -1,0 +1,70 @@
+{% extends 'base.html' %}
+{% block title %}Create Course - Learnify{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-6 py-12">
+
+  <div class="mb-8">
+    <a href="{% url 'instructor_dashboard' %}" class="text-sm text-brand-600 hover:underline">
+      <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+    </a>
+    <h1 class="text-3xl font-extrabold mt-4">Create a New Course</h1>
+    <p class="text-gray-500 dark:text-gray-400 mt-1">Fill in the details below, then write your AI script to generate the video lecture.</p>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 space-y-6">
+    {% csrf_token %}
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">Course Title</label>
+      {{ form.title }}
+    </div>
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">Description</label>
+      {{ form.description }}
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-semibold mb-2">Category</label>
+        {{ form.category }}
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-2">Level</label>
+        {{ form.level }}
+      </div>
+    </div>
+
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="block text-sm font-semibold mb-2">Price ($)</label>
+        {{ form.price }}
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-2">Thumbnail</label>
+        {{ form.thumbnail }}
+      </div>
+    </div>
+
+    <div class="border-t border-gray-200 dark:border-gray-800 pt-6">
+      <label class="block text-sm font-semibold mb-2">
+        <i class="fa-solid fa-wand-magic-sparkles text-brand-600"></i> AI Video Script
+      </label>
+      {{ form.ai_script }}
+      <p class="text-xs text-gray-400 mt-2">Our AI will turn this text into a professional video lecture (coming soon).</p>
+    </div>
+
+    <div class="flex items-center gap-2">
+      {{ form.is_published }}
+      <label class="text-sm font-semibold">Publish immediately (visible to students)</label>
+    </div>
+
+    <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition">
+      Save Course
+    </button>
+  </form>
+
+</div>
+{% endblock %}
+

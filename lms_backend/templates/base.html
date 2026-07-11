@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" class="">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}Mendoura{% endblock %}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'sans-serif'] },
+        colors: {
+          brand: { 50:'#f5f3ff',100:'#ede9fe',400:'#a78bfa',500:'#8b5cf6',600:'#7c3aed',700:'#6d28d9' }
+        }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  body { font-family: 'Inter', sans-serif; }
+  .glass { backdrop-filter: blur(12px); }
+</style>
+<script>
+  if (localStorage.getItem('theme') === 'dark' ||
+     (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  }
+</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 text-gray-800 dark:text-gray-100 transition-colors duration-300">
+
+<nav class="sticky top-0 z-50 glass bg-white/80 dark:bg-gray-950/80 border-b border-gray-200 dark:border-gray-800">
+  <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <a href="{% url 'platform_home' %}" class="flex items-center gap-2 text-2xl font-extrabold text-brand-600 dark:text-brand-400">
+      <i class="fa-solid fa-infinity"></i> Mendoura
+    </a>
+
+    <div class="hidden md:flex items-center gap-8 text-sm font-medium">
+      <a href="{% url 'platform_home' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Home</a>
+      <a href="{% url 'course_catalog' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Courses</a>
+      {% if user.is_authenticated %}
+        {% if user.is_instructor %}
+          <a href="{% url 'instructor_dashboard' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Dashboard</a>
+        {% endif %}
+        {% if user.is_superuser %}
+          <a href="{% url 'admin_dashboard' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Admin Panel</a>
+        {% endif %}
+      {% endif %}
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button onclick="toggleTheme()" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+        <i class="fa-solid fa-moon dark:hidden"></i>
+        <i class="fa-solid fa-sun hidden dark:inline text-yellow-400"></i>
+      </button>
+
+      {% if user.is_authenticated %}
+        <a href="{% url 'logout' %}" class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">Logout</a>
+      {% else %}
+        <a href="{% url 'login' %}" class="px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-800">Login</a>
+        <a href="{% url 'student_signup' %}" class="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700">Sign Up</a>
+      {% endif %}
+    </div>
+  </div>
+</nav>
+
+<main>
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="border-t border-gray-200 dark:border-gray-800 mt-24 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+  <p>&copy; 2026 Mendoura. All rights reserved.</p>
+</footer>
+
+<script>
+  function toggleTheme() {
+    document.documentElement.classList.toggle('dark');
+    localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+  }
+</script>
+{% block extra_js %}{% endblock %}
+</body>
+</html>

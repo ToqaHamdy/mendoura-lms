@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Instructor Dashboard - LMS</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4f6f9; display: flex; }
+        .sidebar { width: 260px; height: 100vh; background: #343a40; color: white; padding: 30px 20px; box-sizing: border-box; position: fixed; }
+        .sidebar h2 { margin-top: 0; font-size: 22px; border-bottom: 1px solid #4b545c; padding-bottom: 15px; }
+        .main-content { margin-left: 280px; padding: 40px; flex-grow: 1; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .btn-create { background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 15px; }
+        .btn-create:hover { background: #218838; }
+        .course-card { background: white; padding: 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; border-left: 5px solid #007bff; }
+        .logout-btn { display: inline-block; margin-top: 30px; color: #dc3545; text-decoration: none; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <h2>👨‍🏫 Instructor Hub</h2>
+        <p>Welcome, <strong>{{ request.user.username }}</strong></p>
+        <p style="color: #bbb; font-size: 14px;">Role: Platform Instructor</p>
+        <form action="{% url 'logout' %}" method="post" style="margin-top: 30px;">
+            {% csrf_token %}
+            <button type="submit" style="background: none; border: none; color: #dc3545; font-weight: bold; cursor: pointer; font-size: 16px; padding: 0;">➔ Logout</button>
+        </form>
+    </div>
+
+    <div class="main-content">
+        <div class="header">
+            <h1>Dashboard Overview</h1>
+            <a href="{% url 'create_course' %}" class="btn-create">+ Create New Course</a>
+        </div>
+
+        <h2 style="color: #333; margin-top: 40px;">Your Courses & AI Scripts</h2>
+        
+        <div style="margin-top: 20px;">
+            {% for course in courses %}
+                <div class="course-card">
+                    <h3 style="margin: 0 0 10px 0; color: #007bff;">{{ course.title }}</h3>
+                    <p style="margin: 0 0 10px 0; color: #555;">{{ course.description }}</p>
+                    <small style="color: #6c757d;">Created on: {{ course.created_at|date:"M d, Y" }}</small>
+                </div>
+            {% empty %}
+                <div style="background: #e9ecef; padding: 30px; text-align: center; border-radius: 6px; color: #6c757d;">
+                    <p style="font-size: 18px; margin: 0;">No courses created yet.</p>
+                    <p style="margin: 5px 0 0 0; font-size: 14px;">Click the green button above to create your first course and write your AI Script!</p>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
+</body>
+</html>

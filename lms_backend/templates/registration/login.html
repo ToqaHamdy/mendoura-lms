@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block title %}Login — Learnify{% endblock %}
+
+{% block content %}
+<div class="min-h-[80vh] flex items-center justify-center px-6">
+  <div class="w-full max-w-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm p-8">
+    <h2 class="text-2xl font-bold mb-1">Welcome back</h2>
+    <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Log in to continue your learning journey.</p>
+
+    {% if form.errors %}
+      <div class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">
+        Invalid username or password.
+      </div>
+    {% endif %}
+
+    <form method="POST" class="space-y-4">
+      {% csrf_token %}
+      <div>
+        <label class="block text-sm font-medium mb-1">Username</label>
+        <input type="text" name="username" required class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">Password</label>
+        <input type="password" name="password" required class="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none">
+      </div>
+      <button type="submit" class="w-full py-3 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 transition">
+        Log In
+      </button>
+    </form>
+
+    <p class="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+      Don't have an account?
+      <a href="{% url 'student_signup' %}" class="text-brand-600 dark:text-brand-400 font-semibold">Sign up as Student</a>
+      ·
+      <a href="{% url 'instructor_signup' %}" class="text-brand-600 dark:text-brand-400 font-semibold">as Instructor</a>
+    </p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}Student Sign Up — Learnify{% endblock %}
+
+{% block content %}
+<div class="min-h-[80vh] flex items-center justify-center px-6 py-12">
+  <div class="w-full max-w-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-sm p-8">
+    <h2 class="text-2xl font-bold mb-1">Create your student account</h2>
+    <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Start learning today, free forever.</p>
+
+    <form method="POST" class="space-y-4">
+      {% csrf_token %}
+      {% for field in form %}
+        <div>
+          <label class="block text-sm font-medium mb-1">{{ field.label }}</label>
+          {{ field }}
+          {% if field.errors %}<p class="text-red-500 text-xs mt-1">{{ field.errors.0 }}</p>{% endif %}
+        </div>
+      {% endfor %}
+      <button type="submit" class="w-full py-3 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 transition">
+        Create Account
+      </button>
+    </form>
+
+    <p class="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
+      Already have an account? <a href="{% url 'login' %}" class="text-brand-600 dark:text-brand-400 font-semibold">Log in</a>
+    </p>
+  </div>
+</div>
+{% endblock %}
