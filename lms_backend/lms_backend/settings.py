@@ -24,6 +24,12 @@ DEBUG = config('DEBUG', default=False, cast=bool)
 
 ALLOWED_HOSTS = ['mendoura-web.onrender.com', 'mendoura.com', 'www.mendoura.com', '127.0.0.1', 'localhost']
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://mendoura.com',
+    'https://www.mendoura.com',
+    'https://mendoura-web.onrender.com',
+]
+
 
 # Application definition
 
