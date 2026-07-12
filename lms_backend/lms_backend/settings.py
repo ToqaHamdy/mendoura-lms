@@ -73,6 +73,8 @@ WSGI_APPLICATION = 'lms_backend.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+import dj_database_url
+
 DATABASES = {
     'default': dj_database_url.config(
         default=config('DATABASE_URL')
