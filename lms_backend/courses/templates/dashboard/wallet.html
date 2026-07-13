@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% block title %}Wallet - Mendoura{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-6 py-12">
+
+  <a href="{% url 'instructor_dashboard' %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+  </a>
+
+  <h1 class="text-3xl font-extrabold mt-4 mb-8">Wallet</h1>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Total Earnings</p>
+      <p class="text-2xl font-bold mt-2">${{ wallet.total_earnings }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Available</p>
+      <p class="text-2xl font-bold mt-2 text-green-600">${{ wallet.available_balance }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Pending</p>
+      <p class="text-2xl font-bold mt-2">${{ wallet.pending_balance }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Withdrawn</p>
+      <p class="text-2xl font-bold mt-2">${{ wallet.total_withdrawn }}</p>
+    </div>
+  </div>
+
+  <h2 class="text-xl font-bold mb-4">Request Payout</h2>
+  <form method="post" action="{% url 'request_payout' %}" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 mb-12 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+    {% csrf_token %}
+    <div>
+      <label class="block text-sm font-semibold mb-2">Amount ($)</label>
+      {{ form.amount }}
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-2">Method</label>
+      {{ form.method }}
+    </div>
+    <button type="submit" class="px-5 py-3 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">
+      Request Payout
+    </button>
+  </form>
+
+  <h2 class="text-xl font-bold mb-4">Payout Requests</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto mb-12">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
+        <tr>
+          <th class="p-4">Amount</th>
+          <th class="p-4">Method</th>
+          <th class="p-4">Status</th>
+          <th class="p-4">Requested</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for payout in payouts %}
+          <tr class="border-t border-gray-100 dark:border-gray-800">
+            <td class="p-4 font-semibold">${{ payout.amount }}</td>
+            <td class="p-4 text-gray-500">{{ payout.method|default:"—" }}</td>
+            <td class="p-4">{{ payout.get_status_display }}</td>
+            <td class="p-4 text-gray-400">{{ payout.requested_at|date:"M d, Y" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="p-4 text-gray-400" colspan="4">No payout requests yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="text-xl font-bold mb-4">Transaction Ledger</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
+        <tr>
+          <th class="p-4">Type</th>
+          <th class="p-4">Amount</th>
+          <th class="p-4">Balance After</th>
+          <th class="p-4">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for txn in transactions %}
+          <tr class="border-t border-gray-100 dark:border-gray-800">
+            <td class="p-4">{{ txn.get_type_display }}</td>
+            <td class="p-4 font-semibold">${{ txn.amount }}</td>
+            <td class="p-4 text-gray-500">${{ txn.balance_after }}</td>
+            <td class="p-4 text-gray-400">{{ txn.created_at|date:"M d, Y" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="p-4 text-gray-400" colspan="4">No transactions yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

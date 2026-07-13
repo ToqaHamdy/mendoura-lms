@@ -6,9 +6,13 @@ from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
-from .forms import CourseCreationForm, InstructorSignUpForm, ReviewForm, StudentSignUpForm
+from .forms import (
+    CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm, PayoutRequestForm,
+    ResourceForm, ReviewForm, StudentSignUpForm,
+)
 from .models import (
-    Certificate, Course, Enrollment, Lecture, LectureProgress, Module, Review, Track,
+    Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress, Module,
+    Payment, Resource, Review, Track,
 )
 
 # 1. Platform Homepage
@@ -45,10 +49,22 @@ def instructor_signup(request):
 def instructor_dashboard(request):
     if not request.user.is_instructor:
         return redirect('platform_home')
-    courses = Course.objects.filter(instructor=request.user)
-    return render(request, 'dashboard/instructor.html', {'courses': courses})
+    courses = Course.objects.filter(instructor=request.user).order_by('-created_at')
+    wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
+    recent_sales = (Payment.objects.filter(course__instructor=request.user,
+                                            status=Payment.Status.SUCCEEDED)
+                     .select_related('course', 'student').order_by('-created_at')[:5])
+    total_students = Enrollment.objects.filter(course__instructor=request.user).count()
 
-# 5. Create Course View (The AI Script Submission)
+    return render(request, 'dashboard/instructor.html', {
+        'courses': courses,
+        'wallet': wallet,
+        'recent_sales': recent_sales,
+        'total_students': total_students,
+    })
+
+# 5. Create Course View -- production_type is chosen here and is read-only
+# once the course has its first successful sale (enforced in Course.save()).
 @login_required
 def create_course(request):
     if not request.user.is_instructor:
@@ -59,7 +75,7 @@ def create_course(request):
             course = form.save(commit=False)
             course.instructor = request.user
             course.save()
-            return redirect('instructor_dashboard')
+            return redirect('manage_modules', course_id=course.id)
     else:
         form = CourseCreationForm()
     return render(request, 'dashboard/create_course.html', {'form': form})
@@ -221,6 +237,115 @@ def toggle_publish(request, course_id):
         course.save()
     return redirect('instructor_dashboard')
 
+
+# Manage a course's Modules (the sections of the curriculum)
+@login_required
+def manage_modules(request, course_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    modules = course.modules.order_by('order')
+
+    if request.method == 'POST':
+        form = ModuleForm(request.POST)
+        if form.is_valid():
+            module = form.save(commit=False)
+            module.course = course
+            module.save()
+            return redirect('manage_modules', course_id=course.id)
+    else:
+        form = ModuleForm()
+
+    return render(request, 'dashboard/manage_modules.html', {
+        'course': course, 'modules': modules, 'form': form,
+    })
+
+
+# Add lectures to a specific Module
+@login_required
+def manage_lectures(request, course_id, module_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    module = get_object_or_404(Module, id=module_id, course=course)
+    lectures = module.lectures.all()
+
+    if request.method == 'POST':
+        form = LectureForm(request.POST, request.FILES)
+        if form.is_valid():
+            lecture = form.save(commit=False)
+            lecture.module = module
+            lecture.save()
+            return redirect('manage_lectures', course_id=course.id, module_id=module.id)
+    else:
+        form = LectureForm()
+
+    return render(request, 'dashboard/manage_lectures.html', {
+        'course': course,
+        'module': module,
+        'lectures': lectures,
+        'form': form,
+        'resource_form': ResourceForm(),
+    })
+
+
+# Attach a downloadable Resource to a lecture
+@login_required
+def add_resource(request, lecture_id):
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course__instructor=request.user)
+    if request.method == 'POST':
+        form = ResourceForm(request.POST, request.FILES)
+        if form.is_valid():
+            resource = form.save(commit=False)
+            resource.lecture = lecture
+            if resource.file:
+                resource.file_size = resource.file.size
+            resource.save()
+    return redirect('manage_lectures', course_id=lecture.module.course_id, module_id=lecture.module_id)
+
+
+# Per-course enrolled student list
+@login_required
+def course_students(request, course_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    enrollments = (Enrollment.objects.filter(course=course)
+                   .select_related('student').order_by('-enrolled_at'))
+    return render(request, 'dashboard/course_students.html', {
+        'course': course, 'enrollments': enrollments,
+    })
+
+
+# Instructor wallet: balance summary + full transaction ledger
+@login_required
+def instructor_wallet(request):
+    if not request.user.is_instructor:
+        return redirect('platform_home')
+    wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
+    transactions = wallet.transactions.all()
+    payouts = wallet.payouts.all()
+    return render(request, 'dashboard/wallet.html', {
+        'wallet': wallet,
+        'transactions': transactions,
+        'payouts': payouts,
+        'form': PayoutRequestForm(),
+    })
+
+
+# Request a payout from available balance
+@login_required
+def request_payout(request):
+    if not request.user.is_instructor:
+        return redirect('platform_home')
+    wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
+
+    if request.method == 'POST':
+        form = PayoutRequestForm(request.POST)
+        if form.is_valid() and form.cleaned_data['amount'] <= wallet.available_balance:
+            payout = form.save(commit=False)
+            payout.wallet = wallet
+            payout.save()
+            messages.success(request, 'Payout request submitted.')
+        else:
+            messages.error(request, 'Payout amount cannot exceed your available balance.')
+
+    return redirect('instructor_wallet')
+
 # 9. Admin Dashboard - overview of all platform data
 @login_required
 def admin_dashboard(request):
@@ -238,29 +363,3 @@ def admin_dashboard(request):
         'published_courses': Course.objects.filter(status=Course.Status.PUBLISHED).count(),
     }
     return render(request, 'dashboard/admin.html', context)
-
-
-# 10. Manage Lectures - List + Add lecture for a specific course
-@login_required
-def manage_lectures(request, course_id):
-    from .forms import LectureForm
-    course = get_object_or_404(Course, id=course_id, instructor=request.user)
-    lectures = Lecture.objects.filter(module__course=course).select_related('module')
-
-    if request.method == 'POST':
-        form = LectureForm(request.POST, request.FILES)
-        if form.is_valid():
-            module, _ = Module.objects.get_or_create(
-                course=course, title='General', defaults={'order': 0})
-            lecture = form.save(commit=False)
-            lecture.module = module
-            lecture.save()
-            return redirect('manage_lectures', course_id=course.id)
-    else:
-        form = LectureForm()
-
-    return render(request, 'dashboard/manage_lectures.html', {
-        'course': course,
-        'lectures': lectures,
-        'form': form,
-    })

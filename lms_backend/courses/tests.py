@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from .models import (
     Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
-    Payment, Review, Track, User, WalletTransaction,
+    Payment, Payout, Review, Track, User, WalletTransaction,
 )
 from .money import calculate_split
 
@@ -215,3 +215,59 @@ class EnrollmentAndReviewTests(TestCase):
         self.client.post(reverse('mark_lecture_complete', args=[self.free_course.id, lecture.id]))
 
         self.assertTrue(Certificate.objects.filter(enrollment=enrollment).exists())
+
+
+class InstructorIsolationTests(TestCase):
+    """An instructor must not see another instructor's courses, students, or wallet."""
+
+    def setUp(self):
+        self.track = Track.objects.create(name='Cloud & DevOps')
+        self.owner = User.objects.create_user(username='owner', password='pw', is_instructor=True)
+        self.intruder = User.objects.create_user(username='intruder', password='pw', is_instructor=True)
+        self.course = Course.objects.create(
+            instructor=self.owner, track=self.track, title='Owner Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+        )
+        self.module = Module.objects.create(course=self.course, title='M1')
+
+    def test_cannot_manage_modules_of_anothers_course(self):
+        self.client.force_login(self.intruder)
+        response = self.client.get(reverse('manage_modules', args=[self.course.id]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_cannot_manage_lectures_of_anothers_course(self):
+        self.client.force_login(self.intruder)
+        response = self.client.get(
+            reverse('manage_lectures', args=[self.course.id, self.module.id]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_cannot_view_students_of_anothers_course(self):
+        self.client.force_login(self.intruder)
+        response = self.client.get(reverse('course_students', args=[self.course.id]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_wallet_view_is_scoped_to_the_logged_in_instructor(self):
+        owner_wallet = InstructorWallet.objects.create(instructor=self.owner, available_balance=Decimal('42.00'))
+        InstructorWallet.objects.create(instructor=self.intruder, available_balance=Decimal('0.00'))
+
+        self.client.force_login(self.intruder)
+        response = self.client.get(reverse('instructor_wallet'))
+        self.assertNotContains(response, '42.00')
+
+
+class PayoutRequestTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='payout_inst', password='pw', is_instructor=True)
+        self.wallet = InstructorWallet.objects.create(
+            instructor=self.instructor, available_balance=Decimal('20.00'))
+
+    def test_cannot_request_more_than_available_balance(self):
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('request_payout'), {'amount': '50.00', 'method': 'bank'})
+        self.assertFalse(Payout.objects.filter(wallet=self.wallet).exists())
+
+    def test_can_request_up_to_available_balance(self):
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('request_payout'), {'amount': '20.00', 'method': 'bank'})
+        self.assertTrue(Payout.objects.filter(wallet=self.wallet, amount=Decimal('20.00')).exists())

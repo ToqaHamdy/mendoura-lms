@@ -14,7 +14,15 @@ urlpatterns = [
     path('courses/<int:course_id>/', views.course_detail, name='course_detail'),
     path('course/<int:course_id>/toggle-publish/', views.toggle_publish, name='toggle_publish'),
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
-    path('course/<int:course_id>/lectures/', views.manage_lectures, name='manage_lectures'),
+
+    # Instructor interface
+    path('course/<int:course_id>/modules/', views.manage_modules, name='manage_modules'),
+    path('course/<int:course_id>/modules/<int:module_id>/lectures/', views.manage_lectures,
+         name='manage_lectures'),
+    path('lectures/<int:lecture_id>/resources/', views.add_resource, name='add_resource'),
+    path('course/<int:course_id>/students/', views.course_students, name='course_students'),
+    path('dashboard/wallet/', views.instructor_wallet, name='instructor_wallet'),
+    path('dashboard/wallet/payout/', views.request_payout, name='request_payout'),
 
     # Student interface
     path('tracks/', views.track_list, name='track_list'),
