@@ -1,6 +1,9 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import User, Course, InstructorWallet, Lecture, Submission, Track, Category, Review
+from .models import (
+    User, Course, InstructorWallet, Lecture, Module, Resource, Submission, Track, Category,
+    Review, Payout,
+)
 
 INPUT_CLASSES = 'w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none'
 
@@ -133,6 +136,55 @@ class SubmissionForm(forms.ModelForm):
                 'rows': 3,
                 'placeholder': 'Any notes for your instructor?',
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+        }
+
+
+# Module Form (Instructor organizes course into sections)
+class ModuleForm(forms.ModelForm):
+    class Meta:
+        model = Module
+        fields = ['title', 'order']
+        widgets = {
+            'title': forms.TextInput(attrs={
+                'placeholder': 'e.g. Getting Started',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+            'order': forms.NumberInput(attrs={
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+        }
+
+
+# Resource Form (Instructor attaches downloadable files to a lecture)
+class ResourceForm(forms.ModelForm):
+    class Meta:
+        model = Resource
+        fields = ['title', 'file']
+        widgets = {
+            'title': forms.TextInput(attrs={
+                'placeholder': 'e.g. Slides.pdf',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+            'file': forms.ClearableFileInput(attrs={
+                'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
+            }),
+        }
+
+
+# Payout Request Form (Instructor withdraws from available balance)
+class PayoutRequestForm(forms.ModelForm):
+    class Meta:
+        model = Payout
+        fields = ['amount', 'method']
+        widgets = {
+            'amount': forms.NumberInput(attrs={
+                'placeholder': '0.00',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+            'method': forms.TextInput(attrs={
+                'placeholder': 'e.g. Bank transfer, PayPal',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
 

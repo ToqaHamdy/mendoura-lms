@@ -1,55 +1,100 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Instructor Dashboard - LMS</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f4f6f9; display: flex; }
-        .sidebar { width: 260px; height: 100vh; background: #343a40; color: white; padding: 30px 20px; box-sizing: border-box; position: fixed; }
-        .sidebar h2 { margin-top: 0; font-size: 22px; border-bottom: 1px solid #4b545c; padding-bottom: 15px; }
-        .main-content { margin-left: 280px; padding: 40px; flex-grow: 1; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-        .btn-create { background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 15px; }
-        .btn-create:hover { background: #218838; }
-        .course-card { background: white; padding: 20px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 15px; border-left: 5px solid #007bff; }
-        .logout-btn { display: inline-block; margin-top: 30px; color: #dc3545; text-decoration: none; font-weight: bold; }
-    </style>
-</head>
-<body>
+{% extends 'base.html' %}
+{% block title %}Instructor Dashboard - Mendoura{% endblock %}
 
-    <div class="sidebar">
-        <h2>👨‍🏫 Instructor Hub</h2>
-        <p>Welcome, <strong>{{ request.user.username }}</strong></p>
-        <p style="color: #bbb; font-size: 14px;">Role: Platform Instructor</p>
-        <form action="{% url 'logout' %}" method="post" style="margin-top: 30px;">
-            {% csrf_token %}
-            <button type="submit" style="background: none; border: none; color: #dc3545; font-weight: bold; cursor: pointer; font-size: 16px; padding: 0;">➔ Logout</button>
-        </form>
+{% block content %}
+<div class="max-w-7xl mx-auto px-6 py-10">
+
+  <div class="flex items-center justify-between mb-8">
+    <h1 class="text-3xl font-extrabold">Instructor Dashboard</h1>
+    <a href="{% url 'create_course' %}" class="px-5 py-2.5 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">
+      <i class="fa-solid fa-plus mr-1"></i> Create New Course
+    </a>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Total Earnings</p>
+      <p class="text-2xl font-bold mt-2">${{ wallet.total_earnings }}</p>
     </div>
-
-    <div class="main-content">
-        <div class="header">
-            <h1>Dashboard Overview</h1>
-            <a href="{% url 'create_course' %}" class="btn-create">+ Create New Course</a>
-        </div>
-
-        <h2 style="color: #333; margin-top: 40px;">Your Courses & AI Scripts</h2>
-        
-        <div style="margin-top: 20px;">
-            {% for course in courses %}
-                <div class="course-card">
-                    <h3 style="margin: 0 0 10px 0; color: #007bff;">{{ course.title }}</h3>
-                    <p style="margin: 0 0 10px 0; color: #555;">{{ course.description }}</p>
-                    <small style="color: #6c757d;">Created on: {{ course.created_at|date:"M d, Y" }}</small>
-                </div>
-            {% empty %}
-                <div style="background: #e9ecef; padding: 30px; text-align: center; border-radius: 6px; color: #6c757d;">
-                    <p style="font-size: 18px; margin: 0;">No courses created yet.</p>
-                    <p style="margin: 5px 0 0 0; font-size: 14px;">Click the green button above to create your first course and write your AI Script!</p>
-                </div>
-            {% endfor %}
-        </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Available Balance</p>
+      <p class="text-2xl font-bold mt-2 text-green-600">${{ wallet.available_balance }}</p>
     </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Students</p>
+      <p class="text-2xl font-bold mt-2">{{ total_students }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Courses</p>
+      <p class="text-2xl font-bold mt-2">{{ courses|length }}</p>
+    </div>
+  </div>
 
-</body>
-</html>
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold">Your Courses</h2>
+    <a href="{% url 'instructor_wallet' %}" class="text-sm font-semibold text-brand-600 hover:underline">
+      <i class="fa-solid fa-wallet mr-1"></i> View Wallet
+    </a>
+  </div>
+  <div class="space-y-3 mb-12">
+    {% for course in courses %}
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p class="font-semibold">{{ course.title }}</p>
+          <p class="text-xs text-gray-400 mt-1">Created {{ course.created_at|date:"M d, Y" }}</p>
+        </div>
+        <div class="flex items-center gap-3 flex-wrap">
+          {% if course.status == 'published' %}
+            <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs font-semibold">Published</span>
+          {% elif course.status == 'pending_review' %}
+            <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-semibold">Pending Review</span>
+          {% elif course.status == 'rejected' %}
+            <span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-semibold">Rejected</span>
+          {% else %}
+            <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs font-semibold">Draft</span>
+          {% endif %}
+          <a href="{% url 'manage_modules' course.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Curriculum</a>
+          <a href="{% url 'course_students' course.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Students</a>
+          {% if course.status == 'draft' or course.status == 'rejected' %}
+            <form method="post" action="{% url 'toggle_publish' course.id %}">
+              {% csrf_token %}
+              <button type="submit" class="text-sm font-semibold text-brand-600 hover:underline">Submit for Review</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center text-gray-400">
+        No courses created yet. Click "Create New Course" to get started.
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="text-xl font-bold mb-4">Recent Sales</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
+        <tr>
+          <th class="p-4">Course</th>
+          <th class="p-4">Student</th>
+          <th class="p-4">Your Share</th>
+          <th class="p-4">Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sale in recent_sales %}
+          <tr class="border-t border-gray-100 dark:border-gray-800">
+            <td class="p-4 font-semibold">{{ sale.course.title }}</td>
+            <td class="p-4 text-gray-500">{{ sale.student.username }}</td>
+            <td class="p-4 text-green-600 font-semibold">${{ sale.instructor_amount }}</td>
+            <td class="p-4 text-gray-400">{{ sale.created_at|date:"M d, Y" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="p-4 text-gray-400" colspan="4">No sales yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,26 +1,29 @@
 {% extends 'base.html' %}
-{% block title %}Manage Lectures - {{ course.title }}{% endblock %}
+{% block title %}{{ module.title }} - {{ course.title }}{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto px-6 py-12">
 
-  <a href="{% url 'instructor_dashboard' %}" class="text-sm text-brand-600 hover:underline">
-    <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+  <a href="{% url 'manage_modules' course.id %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> {{ course.title }} Curriculum
   </a>
 
-  <h1 class="text-3xl font-extrabold mt-4 mb-1">{{ course.title }}</h1>
-  <p class="text-gray-500 dark:text-gray-400 mb-10">Manage lectures, videos, and materials for this course.</p>
+  <h1 class="text-3xl font-extrabold mt-4 mb-1">{{ module.title }}</h1>
+  <p class="text-gray-500 dark:text-gray-400 mb-10">Add lectures, videos, and resources for this module.</p>
 
   <!-- Existing Lectures -->
   <h2 class="text-xl font-bold mb-4">Lectures ({{ lectures|length }})</h2>
   <div class="space-y-3 mb-12">
     {% for lecture in lectures %}
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between flex-wrap gap-2">
           <div class="flex items-center gap-3">
             <span class="w-8 h-8 flex items-center justify-center rounded-full bg-brand-50 dark:bg-gray-800 text-brand-600 font-bold text-sm">{{ lecture.order }}</span>
             <p class="font-semibold">{{ lecture.title }}</p>
           </div>
+          {% if lecture.is_preview %}
+            <span class="bg-brand-50 dark:bg-brand-600/10 text-brand-600 px-2 py-1 rounded-full text-xs font-semibold">Free Preview</span>
+          {% endif %}
         </div>
         <div class="flex flex-wrap gap-3 mt-3 text-sm">
           {% if lecture.video_url %}
@@ -29,10 +32,18 @@
           {% if lecture.video_file %}
             <a href="{{ lecture.video_file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-video"></i> Video File</a>
           {% endif %}
-          {% if lecture.attachment %}
-            <a href="{{ lecture.attachment.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-paperclip"></i> Attachment</a>
-          {% endif %}
+          {% for resource in lecture.resources.all %}
+            <a href="{{ resource.file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-paperclip"></i> {{ resource.title|default:"Resource" }}</a>
+          {% endfor %}
         </div>
+        <form method="post" action="{% url 'add_resource' lecture.id %}" enctype="multipart/form-data" class="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+          {% csrf_token %}
+          {{ resource_form.title }}
+          {{ resource_form.file }}
+          <button type="submit" class="px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm font-semibold hover:bg-gray-200 dark:hover:bg-gray-700 whitespace-nowrap">
+            Add Resource
+          </button>
+        </form>
       </div>
     {% empty %}
       <div class="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center text-gray-400">
@@ -52,7 +63,7 @@
     </div>
 
     <div>
-      <label class="block text-sm font-semibold mb-2">Order (position in course)</label>
+      <label class="block text-sm font-semibold mb-2">Order (position in module)</label>
       {{ form.order }}
     </div>
 
@@ -66,12 +77,9 @@
       {{ form.video_file }}
     </div>
 
-    <div>
-      <label class="block text-sm font-semibold mb-2">
-        <i class="fa-solid fa-paperclip text-brand-600"></i> Attachment
-        <span class="text-gray-400 font-normal">(PDF, image, audio, document — any file type)</span>
-      </label>
-      {{ form.attachment }}
+    <div class="flex items-center gap-2">
+      {{ form.is_preview }}
+      <label class="text-sm font-semibold">Free preview (viewable without enrollment)</label>
     </div>
 
     <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition">
