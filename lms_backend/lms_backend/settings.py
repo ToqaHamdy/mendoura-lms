@@ -39,7 +39,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
+    'cloudinary_storage',
+    'cloudinary',
+
     # تأكدي إن السطر ده مكتوب كدة بالظبط برة وجنب القائمة
     'courses',
 ]
@@ -136,6 +139,14 @@ LOGOUT_REDIRECT_URL = 'platform_home'
 # Media files (User uploaded content like thumbnails)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# Cloudinary Configuration (persistent file storage for uploads)
+CLOUDINARY_STORAGE = {
+    'CLOUD_NAME': config('CLOUDINARY_CLOUD_NAME', default=''),
+    'API_KEY': config('CLOUDINARY_API_KEY', default=''),
+    'API_SECRET': config('CLOUDINARY_API_SECRET', default=''),
+}
+DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
 
 
 # Increase upload limits for video/file uploads
