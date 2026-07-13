@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import User, Course, InstructorWallet, Lecture, Lecture, Submission
+from .models import User, Course, InstructorWallet, Lecture, Submission
 
 INPUT_CLASSES = 'w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none'
 
@@ -86,32 +86,6 @@ class CourseCreationForm(forms.ModelForm):
                 'rows': 6,
                 'placeholder': 'Type the script here. Our AI will turn this text into a professional video lecture.',
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
-            }),
-        }
-
-
-# 4. Lecture Form (Instructor uploads video/materials)
-class LectureForm(forms.ModelForm):
-    class Meta:
-        model = Lecture
-        fields = ['title', 'video_url', 'video_file', 'attachment', 'order']
-        widgets = {
-            'title': forms.TextInput(attrs={
-                'placeholder': 'e.g. Introduction to Variables',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
-            }),
-            'video_url': forms.URLInput(attrs={
-                'placeholder': 'Optional: YouTube/Vimeo link',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
-            }),
-            'video_file': forms.ClearableFileInput(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3'
-            }),
-            'attachment': forms.ClearableFileInput(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3'
-            }),
-            'order': forms.NumberInput(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
 
