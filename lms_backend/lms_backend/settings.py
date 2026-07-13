@@ -181,3 +181,29 @@ PAYMOB_API_KEY = config('PAYMOB_API_KEY', default='')
 PAYMOB_INTEGRATION_ID_CARD = config('PAYMOB_INTEGRATION_ID_CARD', default='', cast=str)
 PAYMOB_IFRAME_ID = config('PAYMOB_IFRAME_ID', default='')
 PAYMOB_HMAC_SECRET = config('PAYMOB_HMAC_SECRET', default='')
+
+# Without this, Django's default logging config sends 500 errors to
+# mail_admins (which does nothing since ADMINS isn't set) and prints nothing
+# to the console -- so a production 500 leaves no trace anywhere. This makes
+# every unhandled exception print its full traceback to stderr, which Render
+# captures in the service's Logs tab.
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django.request': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+    },
+}
