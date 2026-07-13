@@ -92,3 +92,27 @@ def admin_dashboard(request):
         'published_courses': Course.objects.filter(is_published=True).count(),
     }
     return render(request, 'dashboard/admin.html', context)
+
+
+# 10. Manage Lectures - List + Add lecture for a specific course
+@login_required
+def manage_lectures(request, course_id):
+    from .forms import LectureForm
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    lectures = course.lectures.all()
+
+    if request.method == 'POST':
+        form = LectureForm(request.POST, request.FILES)
+        if form.is_valid():
+            lecture = form.save(commit=False)
+            lecture.course = course
+            lecture.save()
+            return redirect('manage_lectures', course_id=course.id)
+    else:
+        form = LectureForm()
+
+    return render(request, 'dashboard/manage_lectures.html', {
+        'course': course,
+        'lectures': lectures,
+        'form': form,
+    })

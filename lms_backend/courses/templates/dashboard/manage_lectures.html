@@ -1,0 +1,83 @@
+{% extends 'base.html' %}
+{% block title %}Manage Lectures - {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-6 py-12">
+
+  <a href="{% url 'instructor_dashboard' %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+  </a>
+
+  <h1 class="text-3xl font-extrabold mt-4 mb-1">{{ course.title }}</h1>
+  <p class="text-gray-500 dark:text-gray-400 mb-10">Manage lectures, videos, and materials for this course.</p>
+
+  <!-- Existing Lectures -->
+  <h2 class="text-xl font-bold mb-4">Lectures ({{ lectures|length }})</h2>
+  <div class="space-y-3 mb-12">
+    {% for lecture in lectures %}
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class="w-8 h-8 flex items-center justify-center rounded-full bg-brand-50 dark:bg-gray-800 text-brand-600 font-bold text-sm">{{ lecture.order }}</span>
+            <p class="font-semibold">{{ lecture.title }}</p>
+          </div>
+        </div>
+        <div class="flex flex-wrap gap-3 mt-3 text-sm">
+          {% if lecture.video_url %}
+            <a href="{{ lecture.video_url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-link"></i> Video Link</a>
+          {% endif %}
+          {% if lecture.video_file %}
+            <a href="{{ lecture.video_file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-video"></i> Video File</a>
+          {% endif %}
+          {% if lecture.attachment %}
+            <a href="{{ lecture.attachment.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-paperclip"></i> Attachment</a>
+          {% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <div class="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center text-gray-400">
+        No lectures added yet. Add your first one below.
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Add Lecture Form -->
+  <h2 class="text-xl font-bold mb-4">Add New Lecture</h2>
+  <form method="post" enctype="multipart/form-data" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 space-y-5">
+    {% csrf_token %}
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">Lecture Title</label>
+      {{ form.title }}
+    </div>
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">Order (position in course)</label>
+      {{ form.order }}
+    </div>
+
+    <div class="border-t border-gray-200 dark:border-gray-800 pt-5">
+      <label class="block text-sm font-semibold mb-2">Video URL <span class="text-gray-400 font-normal">(YouTube, Vimeo, etc.)</span></label>
+      {{ form.video_url }}
+    </div>
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">Or Upload Video File</label>
+      {{ form.video_file }}
+    </div>
+
+    <div>
+      <label class="block text-sm font-semibold mb-2">
+        <i class="fa-solid fa-paperclip text-brand-600"></i> Attachment
+        <span class="text-gray-400 font-normal">(PDF, image, audio, document — any file type)</span>
+      </label>
+      {{ form.attachment }}
+    </div>
+
+    <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition">
+      Add Lecture
+    </button>
+  </form>
+
+</div>
+{% endblock %}

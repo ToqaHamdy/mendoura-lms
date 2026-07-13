@@ -136,3 +136,8 @@ LOGOUT_REDIRECT_URL = 'platform_home'
 # Media files (User uploaded content like thumbnails)
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+
+# Increase upload limits for video/file uploads
+DATA_UPLOAD_MAX_MEMORY_SIZE = 209715200  # 200MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 209715200  # 200MB
