@@ -21,9 +21,26 @@ if [ "$ACTUAL_SIZE" -lt "$TAILWIND_MIN_SIZE" ]; then
   rm -f "$TAILWIND_BIN"
   exit 1
 fi
+echo "Build running from: $(pwd)"
 "$TAILWIND_BIN" -i ./static_src/input.css -o ./static/css/tailwind.css --minify
+echo "Generated CSS:"
+ls -la ./static/css/tailwind.css
 
 python manage.py collectstatic --no-input
+
+# Verify the compiled stylesheet actually made it into the manifest that
+# base.html's {% static %} tag depends on at runtime. If this isn't caught
+# here, every page 500s later with "Missing staticfiles manifest entry"
+# instead of failing the build where it's actually debuggable.
+if ! grep -q '"css/tailwind.css"' staticfiles/staticfiles.json; then
+  echo "ERROR: css/tailwind.css is missing from the staticfiles manifest." >&2
+  echo "--- diagnostics ---" >&2
+  echo "pwd: $(pwd)" >&2
+  ls -la ./static/css/ >&2
+  ls -la ./staticfiles/ 2>&1 | head -5 >&2
+  grep -o 'css/[^"]*' staticfiles/staticfiles.json >&2 || true
+  exit 1
+fi
 
 python manage.py migrate
 
