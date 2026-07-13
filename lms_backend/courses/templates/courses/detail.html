@@ -4,8 +4,8 @@
 {% block content %}
 <div class="max-w-5xl mx-auto px-6 py-12">
 
-  <a href="{% url 'course_catalog' %}" class="text-sm text-brand-600 hover:underline">
-    <i class="fa-solid fa-arrow-left"></i> Back to Courses
+  <a href="{% url 'track_detail' course.track.slug %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> Back to {{ course.track.name }}
   </a>
 
   <div class="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -14,36 +14,94 @@
       {% if course.thumbnail %}
         <img src="{{ course.thumbnail.url }}" class="w-full h-64 object-cover rounded-2xl mb-6">
       {% endif %}
-      <span class="text-xs font-semibold text-brand-600 uppercase">{{ course.category|default:"General" }}</span>
+      <span class="text-xs font-semibold text-brand-600 uppercase">{{ course.category|default:course.track.name }}</span>
       <h1 class="text-3xl font-extrabold mt-2 mb-3">{{ course.title }}</h1>
+      {% if course.subtitle %}<p class="text-lg text-gray-500 dark:text-gray-400 mb-3">{{ course.subtitle }}</p>{% endif %}
       <p class="text-gray-600 dark:text-gray-300">{{ course.description }}</p>
+
+      {% if course.what_you_will_learn %}
+        <h2 class="text-xl font-bold mt-10 mb-4">What You'll Learn</h2>
+        <p class="text-gray-600 dark:text-gray-300 whitespace-pre-line">{{ course.what_you_will_learn }}</p>
+      {% endif %}
 
       <h2 class="text-xl font-bold mt-10 mb-4">Course Content</h2>
       <div class="space-y-3">
-        {% for lecture in lectures %}
-          <div class="flex items-center gap-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-            <i class="fa-solid fa-circle-play text-brand-600 text-xl"></i>
-            <div>
-              <p class="font-semibold">{{ lecture.title }}</p>
-              <p class="text-xs text-gray-400">Lecture {{ forloop.counter }}</p>
+        {% for module in modules %}
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <div class="px-4 py-3 font-semibold bg-gray-50 dark:bg-gray-800/50">{{ module.title }}</div>
+            <div class="divide-y divide-gray-100 dark:divide-gray-800">
+              {% for lecture in module.lectures.all %}
+                <div class="flex items-center justify-between gap-4 px-4 py-3">
+                  <div class="flex items-center gap-3">
+                    <i class="fa-solid fa-circle-play text-brand-600"></i>
+                    <span class="text-sm">{{ lecture.title }}</span>
+                  </div>
+                  {% if lecture.is_preview %}
+                    <a href="{% url 'course_player' course.id lecture.id %}" class="text-xs font-semibold text-brand-600 hover:underline">Preview</a>
+                  {% elif not enrollment %}
+                    <i class="fa-solid fa-lock text-gray-300 dark:text-gray-600 text-xs"></i>
+                  {% endif %}
+                </div>
+              {% endfor %}
             </div>
           </div>
         {% empty %}
           <p class="text-gray-400 text-sm">No lectures added yet for this course.</p>
         {% endfor %}
       </div>
+
+      <h2 class="text-xl font-bold mt-10 mb-4">Reviews</h2>
+      {% if can_review %}
+        <form method="post" action="{% url 'add_review' course.id %}" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 mb-6 space-y-3">
+          {% csrf_token %}
+          {{ review_form.rating.label_tag }} {{ review_form.rating }}
+          {{ review_form.comment }}
+          <button type="submit" class="px-5 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">Submit Review</button>
+        </form>
+      {% endif %}
+      <div class="space-y-3">
+        {% for review in reviews %}
+          <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+            <div class="flex items-center justify-between">
+              <span class="font-semibold">{{ review.student.username }}</span>
+              <span class="text-brand-600 text-sm">{{ review.rating }}/5 <i class="fa-solid fa-star"></i></span>
+            </div>
+            {% if review.comment %}<p class="text-sm text-gray-500 dark:text-gray-400 mt-2">{{ review.comment }}</p>{% endif %}
+          </div>
+        {% empty %}
+          <p class="text-gray-400 text-sm">No reviews yet.</p>
+        {% endfor %}
+      </div>
     </div>
 
     <div>
       <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 sticky top-24">
-        <p class="text-3xl font-extrabold text-brand-600 mb-4">${{ course.price }}</p>
-        <button class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition mb-3">
-          Enroll Now
-        </button>
+        {% if course.is_free %}
+          <p class="text-3xl font-extrabold text-brand-600 mb-4">Free</p>
+        {% else %}
+          <p class="text-3xl font-extrabold text-brand-600 mb-4">${{ course.price }}</p>
+        {% endif %}
+
+        {% if enrollment %}
+          <a href="{% url 'my_learning' %}" class="block text-center w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition mb-3">
+            Go to My Learning
+          </a>
+        {% else %}
+          <form method="post" action="{% url 'enroll_course' course.id %}">
+            {% csrf_token %}
+            <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition mb-3">
+              {% if course.is_free %}Enroll Now{% else %}Buy Now{% endif %}
+            </button>
+          </form>
+        {% endif %}
+
         <p class="text-xs text-gray-400 text-center">Instructor: {{ course.instructor.username }}</p>
         <hr class="my-4 border-gray-200 dark:border-gray-800">
         <p class="text-sm"><i class="fa-solid fa-signal text-brand-600 mr-2"></i>Level: {{ course.get_level_display }}</p>
-        <p class="text-sm mt-2"><i class="fa-solid fa-video text-brand-600 mr-2"></i>{{ lectures|length }} lectures</p>
+        <p class="text-sm mt-2"><i class="fa-solid fa-language text-brand-600 mr-2"></i>{{ course.language }}</p>
+        {% if course.duration_hours %}
+          <p class="text-sm mt-2"><i class="fa-solid fa-clock text-brand-600 mr-2"></i>{{ course.duration_hours }} hours</p>
+        {% endif %}
       </div>
     </div>
 

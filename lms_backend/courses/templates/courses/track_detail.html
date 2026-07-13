@@ -1,12 +1,16 @@
 {% extends 'base.html' %}
-{% block title %}Browse Courses - Mendoura{% endblock %}
+{% block title %}{{ track.name }} - Mendoura{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto px-6 py-12">
 
-  <div class="mb-10">
-    <h1 class="text-3xl font-extrabold">Browse Courses</h1>
-    <p class="text-gray-500 dark:text-gray-400 mt-1">Pick a course and start learning today.</p>
+  <a href="{% url 'track_list' %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> All Tracks
+  </a>
+
+  <div class="mt-4 mb-10">
+    <h1 class="text-3xl font-extrabold">{{ track.name }}</h1>
+    <p class="text-gray-500 dark:text-gray-400 mt-1">{{ track.description }}</p>
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -20,9 +24,9 @@
           </div>
         {% endif %}
         <div class="p-5">
-          <span class="text-xs font-semibold text-brand-600 uppercase">{{ course.category|default:"General" }}</span>
+          <span class="text-xs font-semibold text-brand-600 uppercase">{{ course.category|default:track.name }}</span>
           <h3 class="font-bold text-lg mt-1 mb-1">{{ course.title }}</h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ course.description }}</p>
+          <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ course.subtitle|default:course.description }}</p>
           <div class="flex items-center justify-between mt-4">
             <span class="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{{ course.get_level_display }}</span>
             {% if course.is_free %}
@@ -36,8 +40,8 @@
     {% empty %}
       <div class="col-span-full bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center">
         <i class="fa-solid fa-magnifying-glass text-4xl text-gray-300 mb-4"></i>
-        <p class="text-lg font-semibold">No courses available yet</p>
-        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Check back soon, instructors are cooking up something great.</p>
+        <p class="text-lg font-semibold">No courses in this track yet</p>
+        <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Check back soon.</p>
       </div>
     {% endfor %}
   </div>

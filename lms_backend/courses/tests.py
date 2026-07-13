@@ -2,8 +2,12 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.urls import reverse
 
-from .models import Course, InstructorWallet, Payment, Track, User, WalletTransaction
+from .models import (
+    Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
+    Payment, Review, Track, User, WalletTransaction,
+)
 from .money import calculate_split
 
 
@@ -119,3 +123,95 @@ class WalletTransactionLedgerTests(TestCase):
             txn.save()
         with self.assertRaises(ValidationError):
             txn.delete()
+
+
+class LectureAccessControlTests(TestCase):
+    """An unenrolled student must not reach lecture content by guessing a URL."""
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='inst', password='pw', is_instructor=True)
+        self.enrolled_student = User.objects.create_user(
+            username='enrolled', password='pw', is_student=True)
+        self.outside_student = User.objects.create_user(
+            username='outsider', password='pw', is_student=True)
+        track = Track.objects.create(name='Web Development')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Django Basics',
+            description='...', production_type=Course.ProductionType.FULL,
+            price=Decimal('0.00'), is_free=True, status=Course.Status.PUBLISHED,
+        )
+        module = Module.objects.create(course=self.course, title='Module 1')
+        self.preview_lecture = Lecture.objects.create(
+            module=module, title='Intro', is_preview=True)
+        self.locked_lecture = Lecture.objects.create(
+            module=module, title='Deep Dive', is_preview=False)
+        Enrollment.objects.create(student=self.enrolled_student, course=self.course)
+
+    def _player_url(self, lecture):
+        return reverse('course_player', args=[self.course.id, lecture.id])
+
+    def test_anonymous_user_can_watch_preview_lecture(self):
+        response = self.client.get(self._player_url(self.preview_lecture))
+        self.assertEqual(response.status_code, 200)
+
+    def test_anonymous_user_redirected_to_login_for_locked_lecture(self):
+        response = self.client.get(self._player_url(self.locked_lecture))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_unenrolled_student_cannot_reach_locked_lecture(self):
+        self.client.force_login(self.outside_student)
+        response = self.client.get(self._player_url(self.locked_lecture))
+        self.assertEqual(response.status_code, 403)
+
+    def test_unenrolled_student_can_still_watch_preview_lecture(self):
+        self.client.force_login(self.outside_student)
+        response = self.client.get(self._player_url(self.preview_lecture))
+        self.assertEqual(response.status_code, 200)
+
+    def test_enrolled_student_can_reach_locked_lecture(self):
+        self.client.force_login(self.enrolled_student)
+        response = self.client.get(self._player_url(self.locked_lecture))
+        self.assertEqual(response.status_code, 200)
+
+
+class EnrollmentAndReviewTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='inst2', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='stud2', password='pw', is_student=True)
+        track = Track.objects.create(name='Data Science & AI')
+        self.free_course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Intro to Pandas',
+            description='...', production_type=Course.ProductionType.SCRIPT_ONLY,
+            price=Decimal('0.00'), is_free=True, status=Course.Status.PUBLISHED,
+        )
+
+    def test_enroll_free_course_is_instant(self):
+        self.client.force_login(self.student)
+        self.client.post(reverse('enroll_course', args=[self.free_course.id]))
+        self.assertTrue(
+            Enrollment.objects.filter(student=self.student, course=self.free_course).exists())
+
+    def test_only_enrolled_students_can_review(self):
+        self.client.force_login(self.student)
+        self.client.post(reverse('add_review', args=[self.free_course.id]),
+                          {'rating': 5, 'comment': 'Great!'})
+        self.assertFalse(Review.objects.filter(student=self.student).exists())
+
+        Enrollment.objects.create(student=self.student, course=self.free_course)
+        self.client.post(reverse('add_review', args=[self.free_course.id]),
+                          {'rating': 5, 'comment': 'Great!'})
+        self.assertTrue(Review.objects.filter(student=self.student).exists())
+
+    def test_completing_all_lectures_issues_certificate(self):
+        module = Module.objects.create(course=self.free_course, title='Module 1')
+        lecture = Lecture.objects.create(module=module, title='Only Lecture')
+        enrollment = Enrollment.objects.create(student=self.student, course=self.free_course)
+
+        self.client.force_login(self.student)
+        self.client.post(reverse('mark_lecture_complete', args=[self.free_course.id, lecture.id]))
+
+        self.assertTrue(Certificate.objects.filter(enrollment=enrollment).exists())

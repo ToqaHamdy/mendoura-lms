@@ -42,8 +42,11 @@
 
     <div class="hidden md:flex items-center gap-8 text-sm font-medium">
       <a href="{% url 'platform_home' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Home</a>
-      <a href="{% url 'course_catalog' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Courses</a>
+      <a href="{% url 'track_list' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Tracks</a>
       {% if user.is_authenticated %}
+        {% if user.is_student %}
+          <a href="{% url 'my_learning' %}" class="hover:text-brand-600 dark:hover:text-brand-400">My Learning</a>
+        {% endif %}
         {% if user.is_instructor %}
           <a href="{% url 'instructor_dashboard' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Dashboard</a>
         {% endif %}
