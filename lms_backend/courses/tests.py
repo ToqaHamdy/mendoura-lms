@@ -5,7 +5,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from .models import (
-    Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
+    Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Review, Track, User, WalletTransaction,
 )
 from .money import calculate_split
@@ -271,3 +271,139 @@ class PayoutRequestTests(TestCase):
         self.client.force_login(self.instructor)
         self.client.post(reverse('request_payout'), {'amount': '20.00', 'method': 'bank'})
         self.assertTrue(Payout.objects.filter(wallet=self.wallet, amount=Decimal('20.00')).exists())
+
+    def test_requesting_reserves_the_amount_so_it_cannot_be_double_spent(self):
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('request_payout'), {'amount': '20.00', 'method': 'bank'})
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.wallet.available_balance, Decimal('0.00'))
+        self.assertEqual(self.wallet.pending_balance, Decimal('20.00'))
+
+        # A second request against the now-empty available balance must fail.
+        self.client.post(reverse('request_payout'), {'amount': '20.00', 'method': 'bank'})
+        self.assertEqual(Payout.objects.filter(wallet=self.wallet).count(), 1)
+
+
+class AdminGuardTests(TestCase):
+    """Every admin view must be guarded by a real permission check in the view."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(username='plain_student', password='pw', is_student=True)
+        self.instructor = User.objects.create_user(
+            username='plain_instructor', password='pw', is_instructor=True)
+        self.admin = User.objects.create_superuser(username='real_admin', password='pw')
+
+    def test_non_admin_cannot_reach_admin_dashboard(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertNotEqual(response.status_code, 200)
+
+    def test_instructor_cannot_reach_admin_pages(self):
+        self.client.force_login(self.instructor)
+        for name in ('course_approval_queue', 'admin_users', 'admin_payments',
+                     'admin_payouts', 'admin_tracks', 'admin_categories'):
+            response = self.client.get(reverse(name))
+            self.assertNotEqual(response.status_code, 200, f'{name} was reachable by a non-admin')
+
+    def test_admin_can_reach_admin_pages(self):
+        self.client.force_login(self.admin)
+        for name in ('admin_dashboard', 'course_approval_queue', 'admin_users', 'admin_payments',
+                     'admin_payouts', 'admin_tracks', 'admin_categories'):
+            response = self.client.get(reverse(name))
+            self.assertEqual(response.status_code, 200, f'{name} was not reachable by an admin')
+
+    def test_anonymous_user_cannot_reach_admin_dashboard(self):
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertEqual(response.status_code, 302)
+
+
+class CourseApprovalTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username='approver', password='pw')
+        self.instructor = User.objects.create_user(
+            username='pending_inst', password='pw', is_instructor=True)
+        track = Track.objects.create(name='UI/UX Design')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Pending Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PENDING_REVIEW,
+        )
+
+    def test_approve_publishes_course(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse('approve_course', args=[self.course.id]))
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.PUBLISHED)
+
+    def test_reject_stores_reason(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse('reject_course', args=[self.course.id]), {'reason': 'Low quality audio'})
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.REJECTED)
+        self.assertEqual(self.course.rejection_reason, 'Low quality audio')
+
+    def test_instructor_cannot_approve_own_course(self):
+        self.client.force_login(self.instructor)
+        response = self.client.post(reverse('approve_course', args=[self.course.id]))
+        self.assertNotEqual(response.status_code, 200)
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.PENDING_REVIEW)
+
+
+class AdminPayoutLifecycleTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username='payout_admin', password='pw')
+        self.instructor = User.objects.create_user(
+            username='payout_recipient', password='pw', is_instructor=True)
+        self.wallet = InstructorWallet.objects.create(
+            instructor=self.instructor, available_balance=Decimal('0.00'),
+            pending_balance=Decimal('30.00'))
+        self.payout = Payout.objects.create(wallet=self.wallet, amount=Decimal('30.00'), method='bank')
+
+    def test_approve_then_mark_paid_moves_pending_to_withdrawn(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse('approve_payout', args=[self.payout.id]))
+        self.payout.refresh_from_db()
+        self.assertEqual(self.payout.status, Payout.Status.APPROVED)
+
+        self.client.post(reverse('mark_payout_paid', args=[self.payout.id]))
+        self.payout.refresh_from_db()
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.payout.status, Payout.Status.PAID)
+        self.assertEqual(self.wallet.pending_balance, Decimal('0.00'))
+        self.assertEqual(self.wallet.total_withdrawn, Decimal('30.00'))
+        self.assertTrue(WalletTransaction.objects.filter(
+            wallet=self.wallet, type=WalletTransaction.Type.WITHDRAWAL, amount=Decimal('30.00')).exists())
+
+    def test_reject_returns_funds_to_available_balance(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse('reject_payout', args=[self.payout.id]))
+        self.payout.refresh_from_db()
+        self.wallet.refresh_from_db()
+        self.assertEqual(self.payout.status, Payout.Status.REJECTED)
+        self.assertEqual(self.wallet.pending_balance, Decimal('0.00'))
+        self.assertEqual(self.wallet.available_balance, Decimal('30.00'))
+
+
+class TrackCategoryCrudTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username='crud_admin', password='pw')
+
+    def test_admin_can_create_and_deactivate_track(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse('admin_tracks'), {'name': 'Robotics', 'description': '', 'icon': '', 'order': 0})
+        track = Track.objects.get(name='Robotics')
+        self.assertTrue(track.is_active)
+
+        self.client.post(reverse('toggle_track_active', args=[track.id]))
+        track.refresh_from_db()
+        self.assertFalse(track.is_active)
+
+    def test_admin_can_create_and_delete_category(self):
+        track = Track.objects.create(name='Data Science & AI')
+        self.client.force_login(self.admin)
+        self.client.post(reverse('admin_categories'), {'track': track.id, 'name': 'Machine Learning'})
+        category = Category.objects.get(name='Machine Learning')
+
+        self.client.post(reverse('delete_category', args=[category.id]))
+        self.assertFalse(Category.objects.filter(id=category.id).exists())

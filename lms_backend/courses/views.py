@@ -1,19 +1,34 @@
+from functools import wraps
+
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
+from django.db import transaction
+from django.db.models import Sum
+from django.db.models.functions import TruncMonth
 from django.http import HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
 from .forms import (
-    CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm, PayoutRequestForm,
-    ResourceForm, ReviewForm, StudentSignUpForm,
+    CategoryForm, CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
+    PayoutRequestForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
 )
 from .models import (
-    Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress, Module,
-    Payment, Resource, Review, Track,
+    Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
+    Module, Payment, Payout, Resource, Review, Track, User, WalletTransaction,
 )
+
+
+def admin_required(view_func):
+    @wraps(view_func)
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            return redirect('platform_home')
+        return view_func(request, *args, **kwargs)
+    return wrapper
 
 # 1. Platform Homepage
 def platform_home(request):
@@ -327,7 +342,9 @@ def instructor_wallet(request):
     })
 
 
-# Request a payout from available balance
+# Request a payout from available balance. The requested amount is reserved
+# (moved from available_balance to pending_balance) immediately, so a second
+# request can't be approved against money already promised to the first.
 @login_required
 def request_payout(request):
     if not request.user.is_instructor:
@@ -336,30 +353,200 @@ def request_payout(request):
 
     if request.method == 'POST':
         form = PayoutRequestForm(request.POST)
-        if form.is_valid() and form.cleaned_data['amount'] <= wallet.available_balance:
-            payout = form.save(commit=False)
-            payout.wallet = wallet
-            payout.save()
-            messages.success(request, 'Payout request submitted.')
+        if form.is_valid():
+            with transaction.atomic():
+                wallet = InstructorWallet.objects.select_for_update().get(pk=wallet.pk)
+                amount = form.cleaned_data['amount']
+                if amount <= wallet.available_balance:
+                    wallet.available_balance -= amount
+                    wallet.pending_balance += amount
+                    wallet.save()
+                    payout = form.save(commit=False)
+                    payout.wallet = wallet
+                    payout.save()
+                    messages.success(request, 'Payout request submitted.')
+                else:
+                    messages.error(request, 'Payout amount cannot exceed your available balance.')
         else:
-            messages.error(request, 'Payout amount cannot exceed your available balance.')
+            messages.error(request, 'Please enter a valid payout amount.')
 
     return redirect('instructor_wallet')
 
-# 9. Admin Dashboard - overview of all platform data
-@login_required
+# 9. Admin Dashboard - KPIs and revenue over time
+@admin_required
 def admin_dashboard(request):
-    if not request.user.is_superuser:
-        return redirect('platform_home')
+    succeeded_payments = Payment.objects.filter(status=Payment.Status.SUCCEEDED)
+    totals = succeeded_payments.aggregate(
+        total_revenue=Sum('total_amount'), platform_revenue=Sum('platform_amount'),
+        instructor_revenue=Sum('instructor_amount'))
+    total_paid_out = Payout.objects.filter(status=Payout.Status.PAID).aggregate(
+        total=Sum('amount'))['total'] or 0
 
-    from .models import User, InstructorWallet
+    monthly = (succeeded_payments.annotate(month=TruncMonth('created_at'))
+               .values('month').annotate(revenue=Sum('total_amount')).order_by('month'))
+    max_month_revenue = max([m['revenue'] for m in monthly], default=0) or 1
+
     context = {
-        'users': User.objects.all().order_by('-date_joined'),
-        'courses': Course.objects.all().order_by('-created_at'),
-        'wallets': InstructorWallet.objects.select_related('instructor').all(),
         'total_students': User.objects.filter(is_student=True).count(),
         'total_instructors': User.objects.filter(is_instructor=True).count(),
         'total_courses': Course.objects.count(),
-        'published_courses': Course.objects.filter(status=Course.Status.PUBLISHED).count(),
+        'pending_courses_count': Course.objects.filter(status=Course.Status.PENDING_REVIEW).count(),
+        'total_enrollments': Enrollment.objects.count(),
+        'total_revenue': totals['total_revenue'] or 0,
+        'platform_revenue': totals['platform_revenue'] or 0,
+        'instructor_revenue': totals['instructor_revenue'] or 0,
+        'total_paid_out': total_paid_out,
+        'monthly_revenue': [
+            {'label': m['month'].strftime('%b %Y'),
+             'revenue': m['revenue'],
+             'pct': int((m['revenue'] or 0) * 100 / max_month_revenue)}
+            for m in monthly
+        ],
     }
     return render(request, 'dashboard/admin.html', context)
+
+
+# Course approval queue -- admin approves or rejects, instructors cannot self-publish
+@admin_required
+def course_approval_queue(request):
+    courses = (Course.objects.filter(status=Course.Status.PENDING_REVIEW)
+               .select_related('instructor', 'track').order_by('created_at'))
+    return render(request, 'dashboard/course_approval_queue.html', {'courses': courses})
+
+
+@admin_required
+def approve_course(request, course_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PENDING_REVIEW)
+    if request.method == 'POST':
+        course.status = Course.Status.PUBLISHED
+        course.rejection_reason = ''
+        course.save()
+        messages.success(request, f'{course.title} approved and published.')
+    return redirect('course_approval_queue')
+
+
+@admin_required
+def reject_course(request, course_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PENDING_REVIEW)
+    if request.method == 'POST':
+        course.status = Course.Status.REJECTED
+        course.rejection_reason = request.POST.get('reason', '')
+        course.save()
+        messages.success(request, f'{course.title} rejected.')
+    return redirect('course_approval_queue')
+
+
+# Users table, filterable by role
+@admin_required
+def admin_users(request):
+    users = User.objects.all().order_by('-date_joined')
+    role = request.GET.get('role')
+    if role == 'student':
+        users = users.filter(is_student=True)
+    elif role == 'instructor':
+        users = users.filter(is_instructor=True)
+    elif role == 'admin':
+        users = users.filter(is_superuser=True)
+    return render(request, 'dashboard/admin_users.html', {'users': users, 'role': role})
+
+
+# Payments table
+@admin_required
+def admin_payments(request):
+    payments = Payment.objects.select_related('student', 'course').order_by('-created_at')
+    return render(request, 'dashboard/admin_payments.html', {'payments': payments})
+
+
+# Payout requests -- approve / reject / mark paid
+@admin_required
+def admin_payouts(request):
+    payouts = Payout.objects.select_related('wallet__instructor').order_by('-requested_at')
+    return render(request, 'dashboard/admin_payouts.html', {'payouts': payouts})
+
+
+@admin_required
+def approve_payout(request, payout_id):
+    payout = get_object_or_404(Payout, id=payout_id, status=Payout.Status.REQUESTED)
+    if request.method == 'POST':
+        payout.status = Payout.Status.APPROVED
+        payout.save()
+    return redirect('admin_payouts')
+
+
+@admin_required
+def reject_payout(request, payout_id):
+    payout = get_object_or_404(Payout, id=payout_id, status=Payout.Status.REQUESTED)
+    if request.method == 'POST':
+        with transaction.atomic():
+            wallet = InstructorWallet.objects.select_for_update().get(pk=payout.wallet_id)
+            wallet.pending_balance -= payout.amount
+            wallet.available_balance += payout.amount
+            wallet.save()
+            payout.status = Payout.Status.REJECTED
+            payout.admin_note = request.POST.get('admin_note', '')
+            payout.processed_at = timezone.now()
+            payout.save()
+    return redirect('admin_payouts')
+
+
+@admin_required
+def mark_payout_paid(request, payout_id):
+    payout = get_object_or_404(Payout, id=payout_id, status=Payout.Status.APPROVED)
+    if request.method == 'POST':
+        with transaction.atomic():
+            wallet = InstructorWallet.objects.select_for_update().get(pk=payout.wallet_id)
+            wallet.pending_balance -= payout.amount
+            wallet.total_withdrawn += payout.amount
+            wallet.save()
+            WalletTransaction.objects.create(
+                wallet=wallet, type=WalletTransaction.Type.WITHDRAWAL,
+                amount=payout.amount, balance_after=wallet.available_balance,
+                note=f'Payout #{payout.id}')
+            payout.status = Payout.Status.PAID
+            payout.processed_at = timezone.now()
+            payout.save()
+    return redirect('admin_payouts')
+
+
+# Track & Category CRUD
+@admin_required
+def admin_tracks(request):
+    tracks = Track.objects.order_by('order', 'name')
+    if request.method == 'POST':
+        form = TrackForm(request.POST, request.FILES)
+        if form.is_valid():
+            form.save()
+            return redirect('admin_tracks')
+    else:
+        form = TrackForm()
+    return render(request, 'dashboard/admin_tracks.html', {'tracks': tracks, 'form': form})
+
+
+@admin_required
+def toggle_track_active(request, track_id):
+    track = get_object_or_404(Track, id=track_id)
+    if request.method == 'POST':
+        track.is_active = not track.is_active
+        track.save()
+    return redirect('admin_tracks')
+
+
+@admin_required
+def admin_categories(request):
+    categories = Category.objects.select_related('track').order_by('track__name', 'name')
+    if request.method == 'POST':
+        form = CategoryForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('admin_categories')
+    else:
+        form = CategoryForm()
+    return render(request, 'dashboard/admin_categories.html', {'categories': categories, 'form': form})
+
+
+@admin_required
+def delete_category(request, category_id):
+    category = get_object_or_404(Category, id=category_id)
+    if request.method == 'POST':
+        category.delete()
+    return redirect('admin_categories')

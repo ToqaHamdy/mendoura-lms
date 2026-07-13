@@ -140,6 +140,30 @@ class SubmissionForm(forms.ModelForm):
         }
 
 
+# Track Form (Admin CRUD)
+class TrackForm(forms.ModelForm):
+    class Meta:
+        model = Track
+        fields = ['name', 'description', 'icon', 'order']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'e.g. Web Development'}),
+            'description': forms.Textarea(attrs={'class': INPUT_CLASSES, 'rows': 2}),
+            'icon': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'fa-laptop-code'}),
+            'order': forms.NumberInput(attrs={'class': INPUT_CLASSES}),
+        }
+
+
+# Category Form (Admin CRUD)
+class CategoryForm(forms.ModelForm):
+    class Meta:
+        model = Category
+        fields = ['track', 'name']
+        widgets = {
+            'track': forms.Select(attrs={'class': INPUT_CLASSES}),
+            'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'e.g. Frontend'}),
+        }
+
+
 # Module Form (Instructor organizes course into sections)
 class ModuleForm(forms.ModelForm):
     class Meta:
