@@ -7,6 +7,12 @@
     <h2 class="text-2xl font-bold mb-1">Create your student account</h2>
     <p class="text-gray-500 dark:text-gray-400 text-sm mb-6">Start learning today, free forever.</p>
 
+    {% if form.non_field_errors %}
+      <div class="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 text-sm">
+        {{ form.non_field_errors.0 }}
+      </div>
+    {% endif %}
+
     <form method="POST" class="space-y-4">
       {% csrf_token %}
       {% for field in form %}

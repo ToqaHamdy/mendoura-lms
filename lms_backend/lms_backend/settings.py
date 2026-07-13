@@ -22,8 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config('SECRET_KEY')
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['mendoura-web.onrender.com', 'mendoura.com', 'www.mendoura.com', '127.0.0.1', 'localhost']
-
+ALLOWED_HOSTS = ['mendoura-web.onrender.com', 'mendoura.com', 'www.mendoura.com', 'localhost', '127.0.0.1']
 CSRF_TRUSTED_ORIGINS = [
     'https://mendoura.com',
     'https://www.mendoura.com',
