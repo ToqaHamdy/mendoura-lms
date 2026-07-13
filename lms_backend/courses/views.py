@@ -1,16 +1,23 @@
+import json
+import re
+import uuid
+from decimal import Decimal
 from functools import wraps
 
+import requests
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
-from django.http import HttpResponseForbidden
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
 
+from . import paymob
 from .forms import (
     CategoryForm, CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
     PayoutRequestForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
@@ -127,7 +134,7 @@ def course_detail(request, course_id):
     })
 
 
-# Enroll in a course. Free courses enroll instantly; paid checkout is Phase 4.
+# Enroll in a free course instantly. Paid courses go through checkout_course instead.
 @login_required
 def enroll_course(request, course_id):
     course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
@@ -142,8 +149,119 @@ def enroll_course(request, course_id):
         messages.success(request, f'You are now enrolled in {course.title}.')
         return redirect('my_learning')
 
-    messages.info(request, 'Paid checkout is coming soon for this course.')
-    return redirect('course_detail', course_id=course.id)
+    return redirect('checkout_course', course_id=course.id)
+
+
+# Start a Paymob checkout for a paid course. This only redirects the student
+# to Paymob's hosted iframe -- it must NOT create the Payment/Enrollment, since
+# a browser reaching this view is not proof of payment. That happens in the
+# webhook once Paymob confirms the transaction succeeded.
+@login_required
+def checkout_course(request, course_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    if not request.user.is_student or course.is_free or course.price == 0:
+        return redirect('course_detail', course_id=course.id)
+    if Enrollment.objects.filter(student=request.user, course=course).exists():
+        return redirect('course_detail', course_id=course.id)
+
+    merchant_order_id = f'course{course.id}-student{request.user.id}-{uuid.uuid4().hex[:10]}'
+    amount_cents = int(course.price * 100)
+    billing_data = {
+        'first_name': request.user.first_name or request.user.username,
+        'last_name': request.user.last_name or 'Student',
+        'email': request.user.email or f'{request.user.username}@example.com',
+        'phone_number': request.user.phone_number or 'NA',
+        'country': 'EG', 'city': 'NA', 'state': 'NA',
+        'street': 'NA', 'building': 'NA', 'floor': 'NA', 'apartment': 'NA',
+    }
+    try:
+        checkout_url = paymob.initiate_checkout(amount_cents, merchant_order_id, billing_data)
+    except requests.RequestException:
+        messages.error(request, 'Unable to start checkout right now. Please try again shortly.')
+        return redirect('course_detail', course_id=course.id)
+
+    return redirect(checkout_url)
+
+
+# Paymob webhook -- this is what actually creates the Payment + Enrollment +
+# wallet credit. Idempotent: the unique constraint on provider_transaction_id
+# means a retried webhook can't double-credit a wallet.
+@csrf_exempt
+def paymob_webhook(request):
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+
+    try:
+        payload = json.loads(request.body)
+    except ValueError:
+        return HttpResponse(status=400)
+
+    obj = payload.get('obj', {})
+    received_hmac = request.GET.get('hmac', '')
+    if not paymob.verify_hmac(paymob.flatten_callback_obj(obj), received_hmac):
+        return HttpResponse(status=403)
+
+    if not obj.get('success'):
+        return HttpResponse(status=200)  # nothing to do for a failed/pending transaction
+
+    transaction_id = str(obj.get('id'))
+    order = obj.get('order') or {}
+    merchant_order_id = order.get('merchant_order_id', '') if isinstance(order, dict) else ''
+    match = re.match(r'course(\d+)-student(\d+)-', merchant_order_id)
+    if not match:
+        return HttpResponse(status=400)
+    course_id, student_id = int(match.group(1)), int(match.group(2))
+
+    try:
+        with transaction.atomic():
+            course = Course.objects.select_related('instructor').get(id=course_id)
+            student = User.objects.get(id=student_id)
+            amount = Decimal(str(obj.get('amount_cents', 0))) / Decimal('100')
+
+            if obj.get('is_refunded'):
+                _process_refund(transaction_id)
+                return HttpResponse(status=200)
+
+            payment, created = Payment.objects.get_or_create(
+                provider_transaction_id=transaction_id,
+                defaults={
+                    'student': student, 'course': course, 'total_amount': amount,
+                    'status': Payment.Status.SUCCEEDED,
+                },
+            )
+            if created:
+                wallet, _ = InstructorWallet.objects.get_or_create(instructor=course.instructor)
+                wallet = InstructorWallet.objects.select_for_update().get(pk=wallet.pk)
+                wallet.available_balance += payment.instructor_amount
+                wallet.total_earnings += payment.instructor_amount
+                wallet.save()
+                WalletTransaction.objects.create(
+                    wallet=wallet, type=WalletTransaction.Type.SALE_CREDIT,
+                    amount=payment.instructor_amount, balance_after=wallet.available_balance,
+                    payment=payment)
+                Enrollment.objects.get_or_create(
+                    student=student, course=course, defaults={'payment': payment})
+    except IntegrityError:
+        pass  # duplicate webhook delivery for a transaction we've already processed
+
+    return HttpResponse(status=200)
+
+
+def _process_refund(transaction_id):
+    payment = Payment.objects.filter(
+        provider_transaction_id=transaction_id, status=Payment.Status.SUCCEEDED).first()
+    if payment is None:
+        return
+    payment.status = Payment.Status.REFUNDED
+    payment.save()
+
+    wallet = InstructorWallet.objects.select_for_update().get(instructor=payment.course.instructor)
+    wallet.available_balance -= payment.instructor_amount
+    wallet.save()
+    WalletTransaction.objects.create(
+        wallet=wallet, type=WalletTransaction.Type.REFUND_DEBIT,
+        amount=payment.instructor_amount, balance_after=wallet.available_balance,
+        payment=payment, note=f'Refund for transaction {transaction_id}')
 
 
 # Leave a review -- enrolled students only, one review per student per course.
