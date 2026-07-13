@@ -68,7 +68,7 @@ class PaymentAdmin(admin.ModelAdmin):
     list_display = ('student', 'course', 'total_amount', 'instructor_amount',
                      'platform_amount', 'status', 'created_at')
     list_filter = ('status', 'production_type_at_purchase')
-    search_fields = ('student__username', 'course__title', 'stripe_payment_intent_id')
+    search_fields = ('student__username', 'course__title', 'provider_transaction_id')
 
 
 @admin.register(Enrollment)

@@ -173,3 +173,10 @@ STORAGES = {
 # Increase upload limits for video/file uploads
 DATA_UPLOAD_MAX_MEMORY_SIZE = 209715200  # 200MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 209715200  # 200MB
+
+# Paymob (Egypt-compatible payment processor -- Stripe does not support payouts
+# to Egypt-based accounts). Get these from the Paymob merchant dashboard.
+PAYMOB_API_KEY = config('PAYMOB_API_KEY', default='')
+PAYMOB_INTEGRATION_ID_CARD = config('PAYMOB_INTEGRATION_ID_CARD', default='', cast=str)
+PAYMOB_IFRAME_ID = config('PAYMOB_IFRAME_ID', default='')
+PAYMOB_HMAC_SECRET = config('PAYMOB_HMAC_SECRET', default='')

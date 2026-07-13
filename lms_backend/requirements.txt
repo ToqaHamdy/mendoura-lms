@@ -7,4 +7,4 @@ python-decouple==3.8
 cloudinary==1.45.0
 django-cloudinary-storage==0.3.0
 Pillow==12.3.0
-stripe==15.3.0
+requests==2.34.2

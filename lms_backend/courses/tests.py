@@ -1,9 +1,14 @@
+import hashlib
+import hmac
+import json
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from . import paymob
 from .models import (
     Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Review, Track, User, WalletTransaction,
@@ -407,3 +412,175 @@ class TrackCategoryCrudTests(TestCase):
 
         self.client.post(reverse('delete_category', args=[category.id]))
         self.assertFalse(Category.objects.filter(id=category.id).exists())
+
+
+TEST_HMAC_SECRET = 'test-hmac-secret'
+
+
+def _signed_transaction(merchant_order_id, **overrides):
+    """Build a Paymob transaction dict shaped like the real callback payload
+    (order/owner as nested objects) plus the correct HMAC for it, computed the
+    same way the webhook view does: flatten, then sign."""
+    nested = {
+        'amount_cents': 5000, 'created_at': '2026-01-01T00:00:00Z', 'currency': 'EGP',
+        'error_occured': False, 'has_parent_transaction': False, 'id': 123456,
+        'integration_id': 1, 'is_3d_secure': True, 'is_auth': False, 'is_capture': False,
+        'is_refunded': False, 'is_standalone_payment': True, 'is_voided': False,
+        'order': {'id': 999, 'merchant_order_id': merchant_order_id}, 'owner': {'id': 1},
+        'pending': False,
+        'source_data': {'pan': '1234', 'sub_type': 'VISA', 'type': 'card'},
+        'success': True,
+    }
+    nested.update(overrides)
+    flat = paymob.flatten_callback_obj(nested)
+    concatenated = ''.join(str(flat.get(f, '')) for f in paymob.HMAC_FIELDS)
+    signature = hmac.new(TEST_HMAC_SECRET.encode(), concatenated.encode(), hashlib.sha512).hexdigest()
+    return nested, signature
+
+
+@override_settings(PAYMOB_HMAC_SECRET=TEST_HMAC_SECRET)
+class PaymobHmacTests(TestCase):
+    def test_valid_signature_verifies(self):
+        nested, signature = _signed_transaction('course1-student2-abc123')
+        self.assertTrue(paymob.verify_hmac(paymob.flatten_callback_obj(nested), signature))
+
+    def test_tampered_amount_fails_verification(self):
+        nested, signature = _signed_transaction('course1-student2-abc123')
+        nested['amount_cents'] = 999999  # attacker changes the amount after signing
+        self.assertFalse(paymob.verify_hmac(paymob.flatten_callback_obj(nested), signature))
+
+    def test_wrong_signature_fails_verification(self):
+        nested, _ = _signed_transaction('course1-student2-abc123')
+        self.assertFalse(
+            paymob.verify_hmac(paymob.flatten_callback_obj(nested), 'not-the-real-signature'))
+
+    def test_flatten_callback_obj_extracts_nested_ids(self):
+        raw = {
+            'order': {'id': 999, 'merchant_order_id': 'course1-student2-abcdef1234'},
+            'owner': {'id': 1},
+            'source_data': {'pan': '1234', 'sub_type': 'VISA', 'type': 'card'},
+        }
+        flat = paymob.flatten_callback_obj(raw)
+        self.assertEqual(flat['order'], 999)
+        self.assertEqual(flat['owner'], 1)
+        self.assertEqual(flat['source_data_pan'], '1234')
+
+
+@override_settings(PAYMOB_HMAC_SECRET=TEST_HMAC_SECRET)
+class PaymobWebhookTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='paymob_inst', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='paymob_stud', password='pw', is_student=True)
+        track = Track.objects.create(name='Business & Marketing')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Paid Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('50.00'),
+            status=Course.Status.PUBLISHED,
+        )
+
+    def _post_webhook(self, nested, signature):
+        return self.client.post(
+            f"{reverse('paymob_webhook')}?hmac={signature}",
+            data=json.dumps({'obj': nested}), content_type='application/json')
+
+    def test_successful_transaction_creates_payment_enrollment_and_wallet_credit(self):
+        merchant_order_id = f'course{self.course.id}-student{self.student.id}-abc123'
+        nested, signature = _signed_transaction(merchant_order_id)
+
+        response = self._post_webhook(nested, signature)
+        self.assertEqual(response.status_code, 200)
+
+        payment = Payment.objects.get(provider_transaction_id='123456')
+        self.assertEqual(payment.status, Payment.Status.SUCCEEDED)
+        self.assertEqual(payment.instructor_amount, Decimal('35.00'))
+        self.assertTrue(Enrollment.objects.filter(student=self.student, course=self.course).exists())
+
+        wallet = InstructorWallet.objects.get(instructor=self.instructor)
+        self.assertEqual(wallet.available_balance, Decimal('35.00'))
+        self.assertTrue(WalletTransaction.objects.filter(
+            wallet=wallet, type=WalletTransaction.Type.SALE_CREDIT, amount=Decimal('35.00')).exists())
+
+    def test_duplicate_webhook_delivery_does_not_double_credit(self):
+        merchant_order_id = f'course{self.course.id}-student{self.student.id}-abc123'
+        nested, signature = _signed_transaction(merchant_order_id)
+
+        self._post_webhook(nested, signature)
+        self._post_webhook(nested, signature)  # Paymob retries the same delivery
+
+        self.assertEqual(Payment.objects.filter(provider_transaction_id='123456').count(), 1)
+        wallet = InstructorWallet.objects.get(instructor=self.instructor)
+        self.assertEqual(wallet.available_balance, Decimal('35.00'))
+        self.assertEqual(WalletTransaction.objects.filter(wallet=wallet).count(), 1)
+
+    def test_invalid_signature_is_rejected(self):
+        merchant_order_id = f'course{self.course.id}-student{self.student.id}-abc123'
+        nested, _ = _signed_transaction(merchant_order_id)
+        response = self._post_webhook(nested, 'totally-fake-signature')
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(Payment.objects.exists())
+
+    def test_failed_transaction_creates_nothing(self):
+        merchant_order_id = f'course{self.course.id}-student{self.student.id}-abc123'
+        nested, signature = _signed_transaction(merchant_order_id, success=False)
+
+        response = self._post_webhook(nested, signature)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Payment.objects.exists())
+
+    def test_refund_reverses_wallet_credit(self):
+        merchant_order_id = f'course{self.course.id}-student{self.student.id}-abc123'
+        nested, signature = _signed_transaction(merchant_order_id)
+        self._post_webhook(nested, signature)
+
+        wallet = InstructorWallet.objects.get(instructor=self.instructor)
+        self.assertEqual(wallet.available_balance, Decimal('35.00'))
+
+        refund_nested, refund_signature = _signed_transaction(merchant_order_id, is_refunded=True)
+        response = self._post_webhook(refund_nested, refund_signature)
+        self.assertEqual(response.status_code, 200)
+
+        wallet.refresh_from_db()
+        self.assertEqual(wallet.available_balance, Decimal('0.00'))
+        payment = Payment.objects.get(provider_transaction_id='123456')
+        self.assertEqual(payment.status, Payment.Status.REFUNDED)
+        self.assertTrue(WalletTransaction.objects.filter(
+            wallet=wallet, type=WalletTransaction.Type.REFUND_DEBIT, amount=Decimal('35.00')).exists())
+
+
+class CheckoutFlowTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='checkout_inst', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='checkout_stud', password='pw', is_student=True)
+        track = Track.objects.create(name='Cybersecurity')
+        self.paid_course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Paid Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('30.00'),
+            status=Course.Status.PUBLISHED,
+        )
+
+    def test_enroll_on_paid_course_redirects_to_checkout(self):
+        self.client.force_login(self.student)
+        response = self.client.post(reverse('enroll_course', args=[self.paid_course.id]))
+        self.assertRedirects(response, reverse('checkout_course', args=[self.paid_course.id]),
+                              fetch_redirect_response=False)
+        self.assertFalse(Enrollment.objects.filter(student=self.student).exists())
+
+    @patch('courses.views.paymob.initiate_checkout')
+    def test_checkout_redirects_to_paymob_iframe(self, mock_initiate):
+        mock_initiate.return_value = 'https://accept.paymob.com/api/acceptance/iframes/1?payment_token=abc'
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('checkout_course', args=[self.paid_course.id]))
+        self.assertRedirects(
+            response, 'https://accept.paymob.com/api/acceptance/iframes/1?payment_token=abc',
+            fetch_redirect_response=False)
+        mock_initiate.assert_called_once()
+
+    def test_already_enrolled_student_cannot_start_checkout_again(self):
+        Enrollment.objects.create(student=self.student, course=self.paid_course)
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('checkout_course', args=[self.paid_course.id]))
+        self.assertRedirects(response, reverse('course_detail', args=[self.paid_course.id]))

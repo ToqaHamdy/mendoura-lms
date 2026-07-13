@@ -43,6 +43,7 @@ urlpatterns = [
     path('tracks/', views.track_list, name='track_list'),
     path('tracks/<slug:slug>/', views.track_detail, name='track_detail'),
     path('courses/<int:course_id>/enroll/', views.enroll_course, name='enroll_course'),
+    path('courses/<int:course_id>/checkout/', views.checkout_course, name='checkout_course'),
     path('courses/<int:course_id>/review/', views.add_review, name='add_review'),
     path('learning/', views.my_learning, name='my_learning'),
     path('learn/<int:course_id>/<int:lecture_id>/', views.course_player, name='course_player'),

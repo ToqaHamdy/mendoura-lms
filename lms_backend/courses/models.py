@@ -244,8 +244,8 @@ class Payment(models.Model):
     instructor_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
     platform_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
 
-    stripe_payment_intent_id = models.CharField(max_length=255, unique=True, null=True, blank=True,
-                                                 db_index=True)
+    provider_transaction_id = models.CharField(max_length=255, unique=True, null=True, blank=True,
+                                                db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
