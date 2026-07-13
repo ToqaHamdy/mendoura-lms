@@ -28,17 +28,17 @@ ls -la ./static/css/tailwind.css
 
 python manage.py collectstatic --no-input
 
-# Verify the compiled stylesheet actually made it into the manifest that
-# base.html's {% static %} tag depends on at runtime. If this isn't caught
-# here, every page 500s later with "Missing staticfiles manifest entry"
-# instead of failing the build where it's actually debuggable.
-if ! grep -q '"css/tailwind.css"' staticfiles/staticfiles.json; then
-  echo "ERROR: css/tailwind.css is missing from the staticfiles manifest." >&2
+# Sanity check: the compiled stylesheet should have been copied into
+# STATIC_ROOT. STORAGES uses whitenoise's non-manifest storage (see
+# settings.py for why), so a missing file here degrades to a 404 for that
+# one asset at runtime instead of a 500 on every page -- but it's still
+# worth catching at build time with a clear message.
+if ! ls staticfiles/css/tailwind*.css >/dev/null 2>&1; then
+  echo "ERROR: no compiled tailwind CSS found under staticfiles/css/." >&2
   echo "--- diagnostics ---" >&2
   echo "pwd: $(pwd)" >&2
   ls -la ./static/css/ >&2
-  ls -la ./staticfiles/ 2>&1 | head -5 >&2
-  grep -o 'css/[^"]*' staticfiles/staticfiles.json >&2 || true
+  ls -la ./staticfiles/css/ 2>&1 | head -10 >&2
   exit 1
 fi
 
