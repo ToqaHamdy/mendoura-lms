@@ -165,8 +165,15 @@ STORAGES = {
     'default': {
         'BACKEND': 'cloudinary_storage.storage.MediaCloudinaryStorage',
     },
+    # Non-manifest storage: still gzip/brotli-compresses static files, but
+    # doesn't require every file to have an exact, pre-computed hashed-name
+    # manifest entry. The Manifest variant raises a hard 500 (ValueError:
+    # Missing staticfiles manifest entry) for *any* request touching a
+    # {% static %} tag whose entry didn't make it into staticfiles.json for
+    # any reason -- we hit that in production and traded the cache-busting
+    # benefit for not having every page depend on a perfectly synced manifest.
     'staticfiles': {
-        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
     },
 }
 
