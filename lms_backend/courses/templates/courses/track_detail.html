@@ -2,7 +2,7 @@
 {% block title %}{{ track.name }} - Mendoura{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-6 py-12">
+<div class="max-w-7xl mx-auto px-6 py-12 animate-fade-in">
 
   <a href="{% url 'track_list' %}" class="text-sm text-brand-600 hover:underline">
     <i class="fa-solid fa-arrow-left"></i> All Tracks
@@ -15,28 +15,7 @@
 
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {% for course in courses %}
-      <a href="{% url 'course_detail' course.id %}" class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden hover:shadow-xl hover:-translate-y-1 transition block">
-        {% if course.thumbnail %}
-          <img src="{{ course.thumbnail.url }}" class="w-full h-40 object-cover">
-        {% else %}
-          <div class="w-full h-40 bg-brand-50 dark:bg-gray-800 flex items-center justify-center">
-            <i class="fa-solid fa-book text-4xl text-brand-400"></i>
-          </div>
-        {% endif %}
-        <div class="p-5">
-          <span class="text-xs font-semibold text-brand-600 uppercase">{{ course.category|default:track.name }}</span>
-          <h3 class="font-bold text-lg mt-1 mb-1">{{ course.title }}</h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ course.subtitle|default:course.description }}</p>
-          <div class="flex items-center justify-between mt-4">
-            <span class="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-full">{{ course.get_level_display }}</span>
-            {% if course.is_free %}
-              <span class="font-bold text-brand-600">Free</span>
-            {% else %}
-              <span class="font-bold text-brand-600">${{ course.price }}</span>
-            {% endif %}
-          </div>
-        </div>
-      </a>
+      {% include 'courses/_course_card.html' %}
     {% empty %}
       <div class="col-span-full bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center">
         <i class="fa-solid fa-magnifying-glass text-4xl text-gray-300 mb-4"></i>

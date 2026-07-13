@@ -2,18 +2,27 @@
 {% block title %}{{ lecture.title }} - {{ course.title }}{% endblock %}
 
 {% block content %}
-<div class="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+<div class="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in">
 
   <div class="lg:col-span-2">
     <a href="{% url 'course_detail' course.id %}" class="text-sm text-brand-600 hover:underline">
       <i class="fa-solid fa-arrow-left"></i> {{ course.title }}
     </a>
 
-    <div class="mt-4 aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center">
+    <div class="relative mt-4 aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center">
       {% if lecture.video_file %}
-        <video controls class="w-full h-full" src="{{ lecture.video_file.url }}"></video>
+        <div id="video-skeleton" class="absolute inset-0 bg-gray-800 overflow-hidden">
+          <div class="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+        </div>
+        <video controls class="relative w-full h-full" src="{{ lecture.video_file.url }}"
+               onloadeddata="document.getElementById('video-skeleton')?.remove()"
+               onerror="document.getElementById('video-skeleton')?.remove()"></video>
       {% elif lecture.video_url %}
-        <iframe class="w-full h-full" src="{{ lecture.video_url }}" allowfullscreen></iframe>
+        <div id="video-skeleton" class="absolute inset-0 bg-gray-800 overflow-hidden">
+          <div class="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
+        </div>
+        <iframe class="relative w-full h-full" src="{{ lecture.video_url }}" allowfullscreen
+                onload="document.getElementById('video-skeleton')?.remove()"></iframe>
       {% else %}
         <p class="text-gray-500 text-sm">No video available for this lecture.</p>
       {% endif %}
@@ -29,7 +38,7 @@
             <i class="fa-solid fa-circle-check"></i> Completed
           </span>
         {% else %}
-          <button type="submit" class="px-5 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">
+          <button type="submit" class="px-5 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 transition">
             Mark as Complete
           </button>
         {% endif %}
@@ -40,7 +49,7 @@
       <h2 class="text-lg font-bold mt-8 mb-3">Resources</h2>
       <div class="space-y-2">
         {% for resource in lecture.resources.all %}
-          <a href="{{ resource.file.url }}" target="_blank" class="flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 hover:shadow-sm">
+          <a href="{{ resource.file.url }}" target="_blank" class="flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 hover:shadow-sm transition">
             <i class="fa-solid fa-paperclip text-brand-600"></i>
             <span class="text-sm">{{ resource.title|default:"Download" }}</span>
           </a>
@@ -68,10 +77,19 @@
       {% for module in modules %}
         <p class="text-xs font-semibold text-gray-400 uppercase mt-4 mb-2">{{ module.title }}</p>
         {% for l in module.lectures.all %}
-          <a href="{% url 'course_player' course.id l.id %}" class="flex items-center gap-2 py-2 px-2 rounded-lg text-sm {% if l.id == lecture.id %}bg-brand-50 dark:bg-brand-600/10 text-brand-600 font-semibold{% else %}hover:bg-gray-50 dark:hover:bg-gray-800{% endif %}">
-            <i class="fa-solid fa-circle-play text-xs"></i> {{ l.title }}
+          <a href="{% url 'course_player' course.id l.id %}" class="flex items-center gap-2 py-2 px-2 rounded-lg text-sm transition {% if l.id == lecture.id %}bg-brand-50 dark:bg-brand-600/10 text-brand-600 font-semibold{% else %}hover:bg-gray-50 dark:hover:bg-gray-800{% endif %}">
+            {% if l.id in completed_lecture_ids %}
+              <i class="fa-solid fa-circle-check text-xs text-green-500"></i>
+            {% else %}
+              <i class="fa-solid fa-circle-play text-xs"></i>
+            {% endif %}
+            {{ l.title }}
           </a>
+        {% empty %}
+          <p class="text-xs text-gray-400 px-2">No lectures in this module yet.</p>
         {% endfor %}
+      {% empty %}
+        <p class="text-sm text-gray-400">No curriculum added yet.</p>
       {% endfor %}
     </div>
   </div>

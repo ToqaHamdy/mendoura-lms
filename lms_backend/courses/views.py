@@ -10,7 +10,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.db import IntegrityError, transaction
-from django.db.models import Sum
+from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -102,14 +102,22 @@ def create_course(request):
         form = CourseCreationForm()
     return render(request, 'dashboard/create_course.html', {'form': form})
 
+def _with_stats(queryset):
+    """Annotate courses with a live average rating and enrolled-student count,
+    for display on course cards and detail pages."""
+    return queryset.annotate(avg_rating=Avg('reviews__rating'), enrolled_count=Count('enrollments'))
+
+
 # 6. Course Catalog - Browse all published courses
 def course_catalog(request):
-    courses = Course.objects.filter(status=Course.Status.PUBLISHED).order_by('-created_at')
+    courses = _with_stats(
+        Course.objects.filter(status=Course.Status.PUBLISHED)).order_by('-created_at')
     return render(request, 'courses/catalog.html', {'courses': courses})
 
 # 7. Course Detail - View a single course + its curriculum
 def course_detail(request, course_id):
-    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    course = get_object_or_404(
+        _with_stats(Course.objects.all()), id=course_id, status=Course.Status.PUBLISHED)
     modules = course.modules.prefetch_related('lectures').order_by('order')
     reviews = course.reviews.select_related('student').order_by('-created_at')
 
@@ -312,8 +320,12 @@ def course_player(request, course_id, lecture_id):
     next_lecture = all_lectures[index + 1] if index < len(all_lectures) - 1 else None
 
     progress = None
+    completed_lecture_ids = set()
     if enrollment is not None:
         progress = LectureProgress.objects.filter(enrollment=enrollment, lecture=lecture).first()
+        completed_lecture_ids = set(
+            LectureProgress.objects.filter(enrollment=enrollment, completed=True)
+            .values_list('lecture_id', flat=True))
 
     return render(request, 'courses/player.html', {
         'course': course,
@@ -323,6 +335,7 @@ def course_player(request, course_id, lecture_id):
         'progress': progress,
         'prev_lecture': prev_lecture,
         'next_lecture': next_lecture,
+        'completed_lecture_ids': completed_lecture_ids,
     })
 
 
@@ -358,7 +371,8 @@ def track_list(request):
 # A Track's published courses
 def track_detail(request, slug):
     track = get_object_or_404(Track, slug=slug, is_active=True)
-    courses = Course.objects.filter(track=track, status=Course.Status.PUBLISHED).order_by('-created_at')
+    courses = _with_stats(Course.objects.filter(
+        track=track, status=Course.Status.PUBLISHED)).order_by('-created_at')
     return render(request, 'courses/track_detail.html', {'track': track, 'courses': courses})
 
 # 8. Submit a draft/rejected course for admin review (instructors cannot self-publish)
