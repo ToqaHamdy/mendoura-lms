@@ -4,9 +4,40 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-6 py-10">
 
-  <h1 class="text-3xl font-extrabold mb-8">Admin Overview</h1>
+  <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
+    <h1 class="text-3xl font-extrabold">Admin Overview</h1>
+    <div class="flex items-center gap-4 text-sm font-semibold flex-wrap">
+      <a href="{% url 'course_approval_queue' %}" class="text-brand-600 hover:underline">
+        Approval Queue {% if pending_courses_count %}<span class="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">{{ pending_courses_count }}</span>{% endif %}
+      </a>
+      <a href="{% url 'admin_users' %}" class="text-brand-600 hover:underline">Users</a>
+      <a href="{% url 'admin_payments' %}" class="text-brand-600 hover:underline">Payments</a>
+      <a href="{% url 'admin_payouts' %}" class="text-brand-600 hover:underline">Payouts</a>
+      <a href="{% url 'admin_tracks' %}" class="text-brand-600 hover:underline">Tracks</a>
+      <a href="{% url 'admin_categories' %}" class="text-brand-600 hover:underline">Categories</a>
+    </div>
+  </div>
 
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-12">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Total Revenue</p>
+      <p class="text-2xl font-bold mt-2">${{ total_revenue }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Platform Revenue</p>
+      <p class="text-2xl font-bold mt-2 text-brand-600">${{ platform_revenue }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Instructor Payouts</p>
+      <p class="text-2xl font-bold mt-2">${{ total_paid_out }}</p>
+    </div>
+    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
+      <p class="text-sm text-gray-500 dark:text-gray-400">Enrollments</p>
+      <p class="text-2xl font-bold mt-2">{{ total_enrollments }}</p>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 md:grid-cols-3 gap-6 mb-12">
     <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
       <p class="text-sm text-gray-500 dark:text-gray-400">Students</p>
       <p class="text-3xl font-bold mt-2">{{ total_students }}</p>
@@ -19,96 +50,21 @@
       <p class="text-sm text-gray-500 dark:text-gray-400">Total Courses</p>
       <p class="text-3xl font-bold mt-2">{{ total_courses }}</p>
     </div>
-    <div class="bg-white dark:bg-gray-900 rounded-2xl p-6 border border-gray-200 dark:border-gray-800">
-      <p class="text-sm text-gray-500 dark:text-gray-400">Published</p>
-      <p class="text-3xl font-bold mt-2 text-green-600">{{ published_courses }}</p>
-    </div>
   </div>
 
-  <h2 class="text-xl font-bold mb-4">All Users</h2>
-  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto mb-12">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
-        <tr>
-          <th class="p-4">Username</th>
-          <th class="p-4">Email</th>
-          <th class="p-4">Role</th>
-          <th class="p-4">Joined</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for u in users %}
-          <tr class="border-t border-gray-100 dark:border-gray-800">
-            <td class="p-4 font-semibold">{{ u.username }}</td>
-            <td class="p-4 text-gray-500">{{ u.email }}</td>
-            <td class="p-4">
-              {% if u.is_instructor %}
-                <span class="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-xs">Instructor</span>
-              {% elif u.is_student %}
-                <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">Student</span>
-              {% else %}
-                <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">Admin</span>
-              {% endif %}
-            </td>
-            <td class="p-4 text-gray-400">{{ u.date_joined|date:"M d, Y" }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <h2 class="text-xl font-bold mb-4">All Courses</h2>
-  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto mb-12">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
-        <tr>
-          <th class="p-4">Title</th>
-          <th class="p-4">Instructor</th>
-          <th class="p-4">Price</th>
-          <th class="p-4">Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in courses %}
-          <tr class="border-t border-gray-100 dark:border-gray-800">
-            <td class="p-4 font-semibold">{{ c.title }}</td>
-            <td class="p-4 text-gray-500">{{ c.instructor.username }}</td>
-            <td class="p-4">${{ c.price }}</td>
-            <td class="p-4">
-              {% if c.is_published %}
-                <span class="bg-green-100 text-green-700 px-2 py-1 rounded-full text-xs">Published</span>
-              {% else %}
-                <span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs">Draft</span>
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <h2 class="text-xl font-bold mb-4">Instructor Wallets</h2>
-  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
-        <tr>
-          <th class="p-4">Instructor</th>
-          <th class="p-4">Total Earnings</th>
-          <th class="p-4">Available Balance</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for w in wallets %}
-          <tr class="border-t border-gray-100 dark:border-gray-800">
-            <td class="p-4 font-semibold">{{ w.instructor.username }}</td>
-            <td class="p-4">${{ w.total_earnings }}</td>
-            <td class="p-4 text-green-600 font-semibold">${{ w.available_balance }}</td>
-          </tr>
-        {% empty %}
-          <tr><td class="p-4 text-gray-400" colspan="3">No wallets created yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <h2 class="text-xl font-bold mb-4">Revenue Over Time</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+    {% for point in monthly_revenue %}
+      <div class="flex items-center gap-4 mb-3">
+        <span class="w-20 text-xs text-gray-400 shrink-0">{{ point.label }}</span>
+        <div class="flex-1 h-4 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+          <div class="h-full bg-brand-600" style="width: {{ point.pct }}%"></div>
+        </div>
+        <span class="w-20 text-xs text-right font-semibold shrink-0">${{ point.revenue }}</span>
+      </div>
+    {% empty %}
+      <p class="text-gray-400 text-sm">No revenue yet.</p>
+    {% endfor %}
   </div>
 
 </div>

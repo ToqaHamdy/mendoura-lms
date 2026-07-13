@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Users - Mendoura Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-6 py-12">
+
+  <a href="{% url 'admin_dashboard' %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> Back to Admin Overview
+  </a>
+
+  <div class="flex items-center justify-between mt-4 mb-8 flex-wrap gap-4">
+    <h1 class="text-3xl font-extrabold">Users</h1>
+    <div class="flex items-center gap-2 text-sm font-semibold">
+      <a href="{% url 'admin_users' %}" class="px-3 py-1.5 rounded-lg {% if not role %}bg-brand-600 text-white{% else %}bg-gray-100 dark:bg-gray-800{% endif %}">All</a>
+      <a href="?role=student" class="px-3 py-1.5 rounded-lg {% if role == 'student' %}bg-brand-600 text-white{% else %}bg-gray-100 dark:bg-gray-800{% endif %}">Students</a>
+      <a href="?role=instructor" class="px-3 py-1.5 rounded-lg {% if role == 'instructor' %}bg-brand-600 text-white{% else %}bg-gray-100 dark:bg-gray-800{% endif %}">Instructors</a>
+      <a href="?role=admin" class="px-3 py-1.5 rounded-lg {% if role == 'admin' %}bg-brand-600 text-white{% else %}bg-gray-100 dark:bg-gray-800{% endif %}">Admins</a>
+    </div>
+  </div>
+
+  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="bg-gray-50 dark:bg-gray-800 text-left">
+        <tr>
+          <th class="p-4">Username</th>
+          <th class="p-4">Email</th>
+          <th class="p-4">Role</th>
+          <th class="p-4">Joined</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+          <tr class="border-t border-gray-100 dark:border-gray-800">
+            <td class="p-4 font-semibold">{{ u.username }}</td>
+            <td class="p-4 text-gray-500">{{ u.email }}</td>
+            <td class="p-4">
+              {% if u.is_instructor %}
+                <span class="bg-purple-100 text-purple-700 px-2 py-1 rounded-full text-xs">Instructor</span>
+              {% elif u.is_student %}
+                <span class="bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs">Student</span>
+              {% else %}
+                <span class="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">Admin</span>
+              {% endif %}
+            </td>
+            <td class="p-4 text-gray-400">{{ u.date_joined|date:"M d, Y" }}</td>
+          </tr>
+        {% empty %}
+          <tr><td class="p-4 text-gray-400" colspan="4">No users found.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+{% endblock %}

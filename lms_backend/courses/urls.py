@@ -15,6 +15,21 @@ urlpatterns = [
     path('course/<int:course_id>/toggle-publish/', views.toggle_publish, name='toggle_publish'),
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
 
+    # Admin interface
+    path('dashboard/admin/courses/', views.course_approval_queue, name='course_approval_queue'),
+    path('dashboard/admin/courses/<int:course_id>/approve/', views.approve_course, name='approve_course'),
+    path('dashboard/admin/courses/<int:course_id>/reject/', views.reject_course, name='reject_course'),
+    path('dashboard/admin/users/', views.admin_users, name='admin_users'),
+    path('dashboard/admin/payments/', views.admin_payments, name='admin_payments'),
+    path('dashboard/admin/payouts/', views.admin_payouts, name='admin_payouts'),
+    path('dashboard/admin/payouts/<int:payout_id>/approve/', views.approve_payout, name='approve_payout'),
+    path('dashboard/admin/payouts/<int:payout_id>/reject/', views.reject_payout, name='reject_payout'),
+    path('dashboard/admin/payouts/<int:payout_id>/paid/', views.mark_payout_paid, name='mark_payout_paid'),
+    path('dashboard/admin/tracks/', views.admin_tracks, name='admin_tracks'),
+    path('dashboard/admin/tracks/<int:track_id>/toggle/', views.toggle_track_active, name='toggle_track_active'),
+    path('dashboard/admin/categories/', views.admin_categories, name='admin_categories'),
+    path('dashboard/admin/categories/<int:category_id>/delete/', views.delete_category, name='delete_category'),
+
     # Instructor interface
     path('course/<int:course_id>/modules/', views.manage_modules, name='manage_modules'),
     path('course/<int:course_id>/modules/<int:module_id>/lectures/', views.manage_lectures,

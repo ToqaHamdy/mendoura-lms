@@ -1,0 +1,49 @@
+{% extends 'base.html' %}
+{% block title %}Categories - Mendoura Admin{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-6 py-12">
+
+  <a href="{% url 'admin_dashboard' %}" class="text-sm text-brand-600 hover:underline">
+    <i class="fa-solid fa-arrow-left"></i> Back to Admin Overview
+  </a>
+
+  <h1 class="text-3xl font-extrabold mt-4 mb-8">Categories</h1>
+
+  <div class="space-y-3 mb-12">
+    {% for category in categories %}
+      <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex items-center justify-between">
+        <div>
+          <p class="font-semibold">{{ category.name }}</p>
+          <p class="text-xs text-gray-400 mt-1">{{ category.track.name }}</p>
+        </div>
+        <form method="post" action="{% url 'delete_category' category.id %}">
+          {% csrf_token %}
+          <button type="submit" class="text-sm font-semibold text-red-500 hover:underline">Delete</button>
+        </form>
+      </div>
+    {% empty %}
+      <div class="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center text-gray-400">
+        No categories yet.
+      </div>
+    {% endfor %}
+  </div>
+
+  <h2 class="text-xl font-bold mb-4">Add New Category</h2>
+  <form method="post" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 space-y-5">
+    {% csrf_token %}
+    <div>
+      <label class="block text-sm font-semibold mb-2">Track</label>
+      {{ form.track }}
+    </div>
+    <div>
+      <label class="block text-sm font-semibold mb-2">Name</label>
+      {{ form.name }}
+    </div>
+    <button type="submit" class="w-full bg-brand-600 hover:bg-brand-700 text-white font-semibold py-3 rounded-xl transition">
+      Add Category
+    </button>
+  </form>
+
+</div>
+{% endblock %}
