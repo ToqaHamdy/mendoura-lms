@@ -2,7 +2,7 @@ from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from .forms import StudentSignUpForm, InstructorSignUpForm, CourseCreationForm
-from .models import Course
+from .models import Course, Module, Lecture
 
 # 1. Platform Homepage
 def platform_home(request):
@@ -58,21 +58,22 @@ def create_course(request):
 
 # 6. Course Catalog - Browse all published courses
 def course_catalog(request):
-    courses = Course.objects.filter(is_published=True).order_by('-created_at')
+    courses = Course.objects.filter(status=Course.Status.PUBLISHED).order_by('-created_at')
     return render(request, 'courses/catalog.html', {'courses': courses})
 
 # 7. Course Detail - View a single course + its lectures
 def course_detail(request, course_id):
-    course = get_object_or_404(Course, id=course_id, is_published=True)
-    lectures = course.lectures.all()
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    lectures = Lecture.objects.filter(module__course=course).select_related('module')
     return render(request, 'courses/detail.html', {'course': course, 'lectures': lectures})
 
-# 8. Toggle Publish Status
+# 8. Submit a draft/rejected course for admin review (instructors cannot self-publish)
 @login_required
 def toggle_publish(request, course_id):
     course = get_object_or_404(Course, id=course_id, instructor=request.user)
-    course.is_published = not course.is_published
-    course.save()
+    if course.status in (Course.Status.DRAFT, Course.Status.REJECTED):
+        course.status = Course.Status.PENDING_REVIEW
+        course.save()
     return redirect('instructor_dashboard')
 
 # 9. Admin Dashboard - overview of all platform data
@@ -89,7 +90,7 @@ def admin_dashboard(request):
         'total_students': User.objects.filter(is_student=True).count(),
         'total_instructors': User.objects.filter(is_instructor=True).count(),
         'total_courses': Course.objects.count(),
-        'published_courses': Course.objects.filter(is_published=True).count(),
+        'published_courses': Course.objects.filter(status=Course.Status.PUBLISHED).count(),
     }
     return render(request, 'dashboard/admin.html', context)
 
@@ -99,13 +100,15 @@ def admin_dashboard(request):
 def manage_lectures(request, course_id):
     from .forms import LectureForm
     course = get_object_or_404(Course, id=course_id, instructor=request.user)
-    lectures = course.lectures.all()
+    lectures = Lecture.objects.filter(module__course=course).select_related('module')
 
     if request.method == 'POST':
         form = LectureForm(request.POST, request.FILES)
         if form.is_valid():
+            module, _ = Module.objects.get_or_create(
+                course=course, title='General', defaults={'order': 0})
             lecture = form.save(commit=False)
-            lecture.course = course
+            lecture.module = module
             lecture.save()
             return redirect('manage_lectures', course_id=course.id)
     else:

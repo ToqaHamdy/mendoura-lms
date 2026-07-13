@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import User, Course, InstructorWallet, Lecture, Submission
+from .models import User, Course, InstructorWallet, Lecture, Submission, Track, Category
 
 INPUT_CLASSES = 'w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none'
 
@@ -58,7 +58,8 @@ class InstructorSignUpForm(UserCreationForm):
 class CourseCreationForm(forms.ModelForm):
     class Meta:
         model = Course
-        fields = ['title', 'description', 'category', 'level', 'price', 'thumbnail', 'ai_script', 'is_published']
+        fields = ['title', 'description', 'track', 'category', 'level', 'production_type',
+                  'price', 'is_free', 'thumbnail', 'ai_script']
         widgets = {
             'title': forms.TextInput(attrs={
                 'placeholder': 'e.g. Introduction to Python',
@@ -68,13 +69,16 @@ class CourseCreationForm(forms.ModelForm):
                 'rows': 3, 'placeholder': 'What is this course about?',
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
             }),
-            'category': forms.TextInput(attrs={
-                'placeholder': 'e.g. Web Development',
+            'track': forms.Select(attrs={
+                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
+            }),
+            'category': forms.Select(attrs={
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
             }),
             'level': forms.Select(attrs={
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
             }),
+            'production_type': forms.RadioSelect(),
             'price': forms.NumberInput(attrs={
                 'placeholder': '0.00',
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
@@ -88,6 +92,12 @@ class CourseCreationForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
             }),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['track'].queryset = Track.objects.filter(is_active=True)
+        self.fields['category'].queryset = Category.objects.all()
+        self.fields['category'].required = False
 
 
 # 5. Submission Form (Student uploads homework)
@@ -115,7 +125,7 @@ class SubmissionForm(forms.ModelForm):
 class LectureForm(forms.ModelForm):
     class Meta:
         model = Lecture
-        fields = ['title', 'video_url', 'video_file', 'attachment', 'order']
+        fields = ['title', 'video_url', 'video_file', 'is_preview', 'order']
         widgets = {
             'title': forms.TextInput(attrs={
                 'placeholder': 'e.g. Introduction to Variables',
@@ -126,9 +136,6 @@ class LectureForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'video_file': forms.ClearableFileInput(attrs={
-                'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
-            }),
-            'attachment': forms.ClearableFileInput(attrs={
                 'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
             }),
             'order': forms.NumberInput(attrs={
