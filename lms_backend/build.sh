@@ -17,3 +17,6 @@ fi
 python manage.py collectstatic --no-input
 
 python manage.py migrate
+
+# Idempotent (get_or_create) -- safe to run on every deploy.
+python manage.py seed_tracks
