@@ -1,6 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
-from .models import User, Course, InstructorWallet, Lecture, Submission, Track, Category
+from .models import User, Course, InstructorWallet, Lecture, Submission, Track, Category, Review
 
 INPUT_CLASSES = 'w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none'
 
@@ -98,6 +98,22 @@ class CourseCreationForm(forms.ModelForm):
         self.fields['track'].queryset = Track.objects.filter(is_active=True)
         self.fields['category'].queryset = Category.objects.all()
         self.fields['category'].required = False
+
+
+# Review Form (enrolled students only, enforced in the view)
+class ReviewForm(forms.ModelForm):
+    class Meta:
+        model = Review
+        fields = ['rating', 'comment']
+        widgets = {
+            'rating': forms.Select(choices=[(i, i) for i in range(1, 6)], attrs={
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+            'comment': forms.Textarea(attrs={
+                'rows': 3, 'placeholder': 'Share your experience with this course...',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+        }
 
 
 # 5. Submission Form (Student uploads homework)

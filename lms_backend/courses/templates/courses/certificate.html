@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Certificate - Mendoura{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-6 py-16 text-center">
+  <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-12">
+    <i class="fa-solid fa-certificate text-6xl text-brand-600 mb-6"></i>
+    <p class="text-sm text-gray-400 uppercase tracking-wide mb-2">Certificate of Completion</p>
+    <h1 class="text-3xl font-extrabold mb-4">{{ certificate.enrollment.course.title }}</h1>
+    <p class="text-lg text-gray-600 dark:text-gray-300 mb-1">
+      Awarded to <span class="font-semibold">{{ certificate.enrollment.student.username }}</span>
+    </p>
+    <p class="text-sm text-gray-400 mb-8">Issued {{ certificate.issued_at|date:"F d, Y" }}</p>
+    <p class="text-xs text-gray-400">Verification ID: {{ certificate.uuid }}</p>
+  </div>
+</div>
+{% endblock %}

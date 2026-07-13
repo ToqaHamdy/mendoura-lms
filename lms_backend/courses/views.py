@@ -1,12 +1,20 @@
-from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from .forms import StudentSignUpForm, InstructorSignUpForm, CourseCreationForm
-from .models import Course, Module, Lecture
+from django.contrib.auth.views import redirect_to_login
+from django.http import HttpResponseForbidden
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+
+from .forms import CourseCreationForm, InstructorSignUpForm, ReviewForm, StudentSignUpForm
+from .models import (
+    Certificate, Course, Enrollment, Lecture, LectureProgress, Module, Review, Track,
+)
 
 # 1. Platform Homepage
 def platform_home(request):
-    return render(request, 'platform_home.html')
+    tracks = Track.objects.filter(is_active=True)[:8]
+    return render(request, 'platform_home.html', {'tracks': tracks})
 
 # 2. Student Sign Up View
 def student_signup(request):
@@ -61,11 +69,148 @@ def course_catalog(request):
     courses = Course.objects.filter(status=Course.Status.PUBLISHED).order_by('-created_at')
     return render(request, 'courses/catalog.html', {'courses': courses})
 
-# 7. Course Detail - View a single course + its lectures
+# 7. Course Detail - View a single course + its curriculum
 def course_detail(request, course_id):
     course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
-    lectures = Lecture.objects.filter(module__course=course).select_related('module')
-    return render(request, 'courses/detail.html', {'course': course, 'lectures': lectures})
+    modules = course.modules.prefetch_related('lectures').order_by('order')
+    reviews = course.reviews.select_related('student').order_by('-created_at')
+
+    enrollment = None
+    user_review = None
+    if request.user.is_authenticated:
+        enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+        user_review = reviews.filter(student=request.user).first()
+
+    can_review = bool(
+        request.user.is_authenticated and request.user.is_student
+        and enrollment is not None and user_review is None
+    )
+
+    return render(request, 'courses/detail.html', {
+        'course': course,
+        'modules': modules,
+        'reviews': reviews,
+        'enrollment': enrollment,
+        'can_review': can_review,
+        'review_form': ReviewForm() if can_review else None,
+    })
+
+
+# Enroll in a course. Free courses enroll instantly; paid checkout is Phase 4.
+@login_required
+def enroll_course(request, course_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    if not request.user.is_student:
+        return redirect('course_detail', course_id=course.id)
+
+    if Enrollment.objects.filter(student=request.user, course=course).exists():
+        return redirect('course_detail', course_id=course.id)
+
+    if course.is_free or course.price == 0:
+        Enrollment.objects.create(student=request.user, course=course)
+        messages.success(request, f'You are now enrolled in {course.title}.')
+        return redirect('my_learning')
+
+    messages.info(request, 'Paid checkout is coming soon for this course.')
+    return redirect('course_detail', course_id=course.id)
+
+
+# Leave a review -- enrolled students only, one review per student per course.
+@login_required
+def add_review(request, course_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    is_enrolled = Enrollment.objects.filter(student=request.user, course=course).exists()
+    already_reviewed = Review.objects.filter(student=request.user, course=course).exists()
+
+    if request.method == 'POST' and is_enrolled and not already_reviewed:
+        form = ReviewForm(request.POST)
+        if form.is_valid():
+            review = form.save(commit=False)
+            review.student = request.user
+            review.course = course
+            review.save()
+
+    return redirect('course_detail', course_id=course.id)
+
+
+# My Learning - enrolled courses with progress
+@login_required
+def my_learning(request):
+    enrollments = (Enrollment.objects.filter(student=request.user)
+                   .select_related('course').order_by('-enrolled_at'))
+    return render(request, 'courses/my_learning.html', {'enrollments': enrollments})
+
+
+# Course Player - watch a lecture. Preview lectures are open to anyone;
+# everything else requires an active enrollment.
+def course_player(request, course_id, lecture_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
+
+    enrollment = None
+    if request.user.is_authenticated:
+        enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+
+    if enrollment is None and not lecture.is_preview:
+        if not request.user.is_authenticated:
+            return redirect_to_login(request.get_full_path())
+        return HttpResponseForbidden('Enroll in this course to watch this lecture.')
+
+    modules = course.modules.prefetch_related('lectures').order_by('order')
+    all_lectures = list(Lecture.objects.filter(module__course=course).order_by('module__order', 'order'))
+    index = next((i for i, l in enumerate(all_lectures) if l.id == lecture.id), 0)
+    prev_lecture = all_lectures[index - 1] if index > 0 else None
+    next_lecture = all_lectures[index + 1] if index < len(all_lectures) - 1 else None
+
+    progress = None
+    if enrollment is not None:
+        progress = LectureProgress.objects.filter(enrollment=enrollment, lecture=lecture).first()
+
+    return render(request, 'courses/player.html', {
+        'course': course,
+        'lecture': lecture,
+        'modules': modules,
+        'enrollment': enrollment,
+        'progress': progress,
+        'prev_lecture': prev_lecture,
+        'next_lecture': next_lecture,
+    })
+
+
+# Mark a lecture complete for the current student's enrollment
+@login_required
+def mark_lecture_complete(request, course_id, lecture_id):
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
+    enrollment = get_object_or_404(Enrollment, student=request.user, course=course)
+
+    if request.method == 'POST':
+        progress, _ = LectureProgress.objects.get_or_create(enrollment=enrollment, lecture=lecture)
+        progress.completed = True
+        progress.completed_at = timezone.now()
+        progress.save()
+        enrollment.issue_certificate_if_complete()
+
+    return redirect('course_player', course_id=course.id, lecture_id=lecture.id)
+
+
+# Public certificate verification page
+def certificate_view(request, certificate_uuid):
+    certificate = get_object_or_404(Certificate, uuid=certificate_uuid)
+    return render(request, 'courses/certificate.html', {'certificate': certificate})
+
+
+# Browse all active Tracks
+def track_list(request):
+    tracks = Track.objects.filter(is_active=True)
+    return render(request, 'courses/track_list.html', {'tracks': tracks})
+
+
+# A Track's published courses
+def track_detail(request, slug):
+    track = get_object_or_404(Track, slug=slug, is_active=True)
+    courses = Course.objects.filter(track=track, status=Course.Status.PUBLISHED).order_by('-created_at')
+    return render(request, 'courses/track_detail.html', {'track': track, 'courses': courses})
 
 # 8. Submit a draft/rejected course for admin review (instructors cannot self-publish)
 @login_required

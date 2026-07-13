@@ -1,0 +1,80 @@
+{% extends 'base.html' %}
+{% block title %}{{ lecture.title }} - {{ course.title }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+  <div class="lg:col-span-2">
+    <a href="{% url 'course_detail' course.id %}" class="text-sm text-brand-600 hover:underline">
+      <i class="fa-solid fa-arrow-left"></i> {{ course.title }}
+    </a>
+
+    <div class="mt-4 aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center">
+      {% if lecture.video_file %}
+        <video controls class="w-full h-full" src="{{ lecture.video_file.url }}"></video>
+      {% elif lecture.video_url %}
+        <iframe class="w-full h-full" src="{{ lecture.video_url }}" allowfullscreen></iframe>
+      {% else %}
+        <p class="text-gray-500 text-sm">No video available for this lecture.</p>
+      {% endif %}
+    </div>
+
+    <h1 class="text-2xl font-extrabold mt-6">{{ lecture.title }}</h1>
+
+    {% if enrollment %}
+      <form method="post" action="{% url 'mark_lecture_complete' course.id lecture.id %}" class="mt-4">
+        {% csrf_token %}
+        {% if progress.completed %}
+          <span class="inline-flex items-center gap-2 px-5 py-2 rounded-lg bg-green-50 dark:bg-green-600/10 text-green-600 font-semibold">
+            <i class="fa-solid fa-circle-check"></i> Completed
+          </span>
+        {% else %}
+          <button type="submit" class="px-5 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">
+            Mark as Complete
+          </button>
+        {% endif %}
+      </form>
+    {% endif %}
+
+    {% if lecture.resources.all %}
+      <h2 class="text-lg font-bold mt-8 mb-3">Resources</h2>
+      <div class="space-y-2">
+        {% for resource in lecture.resources.all %}
+          <a href="{{ resource.file.url }}" target="_blank" class="flex items-center gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 hover:shadow-sm">
+            <i class="fa-solid fa-paperclip text-brand-600"></i>
+            <span class="text-sm">{{ resource.title|default:"Download" }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <div class="flex items-center justify-between mt-8">
+      {% if prev_lecture %}
+        <a href="{% url 'course_player' course.id prev_lecture.id %}" class="text-sm font-semibold text-brand-600 hover:underline">
+          <i class="fa-solid fa-arrow-left"></i> Previous
+        </a>
+      {% else %}<span></span>{% endif %}
+      {% if next_lecture %}
+        <a href="{% url 'course_player' course.id next_lecture.id %}" class="text-sm font-semibold text-brand-600 hover:underline">
+          Next <i class="fa-solid fa-arrow-right"></i>
+        </a>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sticky top-24 max-h-[80vh] overflow-y-auto">
+      <h2 class="font-bold mb-3">Curriculum</h2>
+      {% for module in modules %}
+        <p class="text-xs font-semibold text-gray-400 uppercase mt-4 mb-2">{{ module.title }}</p>
+        {% for l in module.lectures.all %}
+          <a href="{% url 'course_player' course.id l.id %}" class="flex items-center gap-2 py-2 px-2 rounded-lg text-sm {% if l.id == lecture.id %}bg-brand-50 dark:bg-brand-600/10 text-brand-600 font-semibold{% else %}hover:bg-gray-50 dark:hover:bg-gray-800{% endif %}">
+            <i class="fa-solid fa-circle-play text-xs"></i> {{ l.title }}
+          </a>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

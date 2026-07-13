@@ -15,4 +15,15 @@ urlpatterns = [
     path('course/<int:course_id>/toggle-publish/', views.toggle_publish, name='toggle_publish'),
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
     path('course/<int:course_id>/lectures/', views.manage_lectures, name='manage_lectures'),
+
+    # Student interface
+    path('tracks/', views.track_list, name='track_list'),
+    path('tracks/<slug:slug>/', views.track_detail, name='track_detail'),
+    path('courses/<int:course_id>/enroll/', views.enroll_course, name='enroll_course'),
+    path('courses/<int:course_id>/review/', views.add_review, name='add_review'),
+    path('learning/', views.my_learning, name='my_learning'),
+    path('learn/<int:course_id>/<int:lecture_id>/', views.course_player, name='course_player'),
+    path('learn/<int:course_id>/<int:lecture_id>/complete/', views.mark_lecture_complete,
+         name='mark_lecture_complete'),
+    path('certificates/<uuid:certificate_uuid>/', views.certificate_view, name='certificate_view'),
 ]

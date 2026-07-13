@@ -298,6 +298,28 @@ class Enrollment(models.Model):
     def __str__(self):
         return f'{self.student} enrolled in {self.course}'
 
+    def total_lecture_count(self):
+        return Lecture.objects.filter(module__course=self.course).count()
+
+    def completed_lecture_count(self):
+        return self.lecture_progress.filter(completed=True).count()
+
+    def progress_percent(self):
+        total = self.total_lecture_count()
+        if not total:
+            return 0
+        return round(self.completed_lecture_count() * 100 / total)
+
+    def is_complete(self):
+        total = self.total_lecture_count()
+        return total > 0 and self.completed_lecture_count() >= total
+
+    def issue_certificate_if_complete(self):
+        if self.is_complete():
+            certificate, _ = Certificate.objects.get_or_create(enrollment=self)
+            return certificate
+        return None
+
 
 class LectureProgress(models.Model):
     enrollment = models.ForeignKey(Enrollment, on_delete=models.CASCADE, related_name='lecture_progress')
