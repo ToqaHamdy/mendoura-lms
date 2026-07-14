@@ -9,8 +9,9 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, Prefetch, Q, Sum
 from django.db.models.functions import TruncMonth
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -24,7 +25,7 @@ from .forms import (
 )
 from .models import (
     Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
-    Module, Payment, Payout, Resource, Review, Track, User, WalletTransaction,
+    Module, Payment, Payout, Resource, Review, Track, TrackRoadmapStep, User, WalletTransaction,
 )
 
 
@@ -39,7 +40,7 @@ def admin_required(view_func):
 
 # 1. Platform Homepage
 def platform_home(request):
-    tracks = Track.objects.filter(is_active=True)[:8]
+    tracks = Track.objects.filter(parent__isnull=True, is_active=True)
     return render(request, 'platform_home.html', {'tracks': tracks})
 
 # 2. Student Sign Up View
@@ -362,18 +363,119 @@ def certificate_view(request, certificate_uuid):
     return render(request, 'courses/certificate.html', {'certificate': certificate})
 
 
-# Browse all active Tracks
+# Browse top-level Track categories (Tech, Languages, Marketing, Business, Design, ...)
 def track_list(request):
-    tracks = Track.objects.filter(is_active=True)
+    tracks = Track.objects.filter(parent__isnull=True, is_active=True)
     return render(request, 'courses/track_list.html', {'tracks': tracks})
 
 
-# A Track's published courses
+def _roadmap_for_student(track, user):
+    """Build the ordered roadmap steps for a leaf track, each annotated with a
+    state the template can key off of: 'complete', 'in_progress', 'locked',
+    'available', or 'planned' (no course linked to this step yet)."""
+    steps = list(track.roadmap_steps.select_related('course').order_by('order'))
+    if not user.is_authenticated:
+        return [{'step': s, 'state': 'planned' if not s.course else 'available'} for s in steps]
+
+    enrollments = {
+        e.course_id: e for e in
+        Enrollment.objects.filter(student=user, course__in=[s.course_id for s in steps if s.course_id])
+    }
+    result = []
+    unlocked = True
+    for s in steps:
+        if not s.course:
+            result.append({'step': s, 'state': 'planned'})
+            continue
+        enrollment = enrollments.get(s.course_id)
+        if enrollment and enrollment.is_complete():
+            state = 'complete'
+        elif enrollment:
+            state = 'in_progress'
+        elif unlocked:
+            state = 'available'
+        else:
+            state = 'locked'
+        result.append({'step': s, 'state': state, 'enrollment': enrollment})
+        if not (enrollment and enrollment.is_complete()) and not s.is_optional:
+            unlocked = False
+    return result
+
+
+# A Track's published courses (leaf track) or its child tracks (parent track)
 def track_detail(request, slug):
-    track = get_object_or_404(Track, slug=slug, is_active=True)
+    track = get_object_or_404(
+        Track.objects.select_related('parent').prefetch_related('children'),
+        slug=slug, is_active=True,
+    )
+
+    if track.children.exists():
+        children = track.children.filter(is_active=True)
+        return render(request, 'courses/track_detail.html', {
+            'track': track, 'children': children, 'is_parent': True,
+        })
+
     courses = _with_stats(Course.objects.filter(
         track=track, status=Course.Status.PUBLISHED)).order_by('-created_at')
-    return render(request, 'courses/track_detail.html', {'track': track, 'courses': courses})
+    roadmap = _roadmap_for_student(track, request.user)
+    return render(request, 'courses/track_detail.html', {
+        'track': track, 'courses': courses, 'roadmap': roadmap,
+    })
+
+
+# Full-text search across Tracks and Courses
+def search_results(request):
+    query = request.GET.get('q', '').strip()
+    level = request.GET.get('level', '')
+    price = request.GET.get('price', '')
+    language = request.GET.get('language', '')
+    track_slug = request.GET.get('track', '')
+
+    tracks = Track.objects.none()
+    courses = Course.objects.none()
+
+    if query:
+        search_query = SearchQuery(query)
+
+        tracks = (
+            Track.objects.filter(is_active=True)
+            .annotate(
+                search=SearchVector('name', 'description'),
+                rank=SearchRank(SearchVector('name', 'description'), search_query),
+            )
+            .filter(search=search_query)
+            .order_by('-rank')
+        )
+
+        courses = _with_stats(Course.objects.filter(status=Course.Status.PUBLISHED)).annotate(
+            search=SearchVector('title', 'subtitle', 'description'),
+            rank=SearchRank(SearchVector('title', 'subtitle', 'description'), search_query),
+        ).filter(search=search_query)
+
+        if level:
+            courses = courses.filter(level=level)
+        if price == 'free':
+            courses = courses.filter(is_free=True)
+        elif price == 'paid':
+            courses = courses.filter(is_free=False)
+        if language:
+            courses = courses.filter(language__iexact=language)
+        if track_slug:
+            courses = courses.filter(track__slug=track_slug)
+
+        courses = courses.order_by('-rank')
+
+    return render(request, 'courses/search_results.html', {
+        'query': query,
+        'tracks': tracks,
+        'courses': courses,
+        'selected_level': level,
+        'selected_price': price,
+        'selected_language': language,
+        'selected_track': track_slug,
+        'levels': Course.Level.choices,
+        'all_tracks': Track.objects.filter(parent__isnull=False, is_active=True).order_by('name'),
+    })
 
 # 8. Submit a draft/rejected course for admin review (instructors cannot self-publish)
 @login_required
@@ -643,7 +745,16 @@ def mark_payout_paid(request, payout_id):
 # Track & Category CRUD
 @admin_required
 def admin_tracks(request):
-    tracks = Track.objects.order_by('order', 'name')
+    # Parents first, each immediately followed by its own children, so the
+    # nested taxonomy reads as a tree instead of an arbitrarily interleaved list.
+    parents = Track.objects.filter(parent__isnull=True).order_by('order', 'name').prefetch_related(
+        Prefetch('children', queryset=Track.objects.order_by('order', 'name'))
+    )
+    tracks = []
+    for parent in parents:
+        tracks.append(parent)
+        tracks.extend(parent.children.all())
+
     if request.method == 'POST':
         form = TrackForm(request.POST, request.FILES)
         if form.is_valid():

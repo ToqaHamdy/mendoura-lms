@@ -34,6 +34,12 @@ def _unique_slugify(instance, base_value, slug_field='slug'):
 
 
 class Track(models.Model):
+    # Self-referencing rather than a separate "Category" model for the top level --
+    # a track and its parent are the same kind of thing (name, slug, icon, ordering),
+    # just nested. Two levels deep in practice (Tech -> Cybersecurity), but nothing
+    # here enforces that depth limit.
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True,
+                                related_name='children')
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
     description = models.TextField(blank=True)
@@ -46,12 +52,37 @@ class Track(models.Model):
         ordering = ['order', 'name']
 
     def __str__(self):
-        return self.name
+        return f'{self.parent.name} / {self.name}' if self.parent else self.name
 
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = _unique_slugify(self, self.name)
         super().save(*args, **kwargs)
+
+
+class TrackRoadmapStep(models.Model):
+    """One node in a track's ordered learning path (the track roadmap, distinct
+    from a course's own Module/Lecture syllabus). `course` is nullable so an
+    admin can lay out a full planned roadmap -- 'Python Fundamentals', 'Machine
+    Learning Foundations', ... -- before any instructor has actually published
+    the matching course. Once a real course exists, link it here and the
+    stepper switches from a plain label to a clickable, progress-aware node."""
+    track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name='roadmap_steps')
+    course = models.ForeignKey('Course', on_delete=models.SET_NULL, null=True, blank=True,
+                                related_name='roadmap_steps')
+    title = models.CharField(max_length=255, help_text='Used until a course is linked, or if none ever is.')
+    order = models.PositiveIntegerField(default=0)
+    is_optional = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['order']
+
+    def __str__(self):
+        return f'{self.track.name} #{self.order}: {self.display_title}'
+
+    @property
+    def display_title(self):
+        return self.course.title if self.course else self.title
 
 
 class Category(models.Model):

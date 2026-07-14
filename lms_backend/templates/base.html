@@ -56,9 +56,43 @@
       <span class="sr-only">Mendoura home</span>
     </a>
 
-    <div class="hidden md:flex items-center gap-8 text-sm font-medium">
+    <div class="hidden md:flex items-center gap-6 text-sm font-medium">
       <a href="{% url 'platform_home' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Home</a>
-      <a href="{% url 'track_list' %}" class="hover:text-brand-600 dark:hover:text-brand-400">Tracks</a>
+
+      <div class="relative">
+        <button type="button" id="tracks-btn" aria-haspopup="true" aria-expanded="false" aria-controls="tracks-panel"
+                class="flex items-center gap-1.5 hover:text-brand-600 dark:hover:text-brand-400">
+          Tracks <i id="tracks-chevron" class="fa-solid fa-chevron-down text-[10px] transition-transform"></i>
+        </button>
+
+        <div id="tracks-panel" role="menu" aria-hidden="true"
+             class="hidden absolute top-full left-0 mt-3 w-[560px] max-w-[85vw] bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl shadow-2xl overflow-hidden z-50">
+          <div class="grid grid-cols-[190px_1fr] max-h-[70vh]">
+            <div class="border-r border-gray-100 dark:border-gray-800 py-2 overflow-y-auto">
+              {% for parent in tracks_menu %}
+                <button type="button" role="menuitem" tabindex="-1" data-target="track-children-{{ parent.id }}"
+                        class="track-parent-btn w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800 {% if forloop.first %}bg-gray-50 dark:bg-gray-800 text-brand-600{% endif %}">
+                  <span><i class="fa-solid {{ parent.icon|default:'fa-layer-group' }} mr-2 text-brand-600"></i>{{ parent.name }}</span>
+                  <i class="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
+                </button>
+              {% endfor %}
+            </div>
+            <div class="p-4 overflow-y-auto">
+              {% for parent in tracks_menu %}
+                <div id="track-children-{{ parent.id }}" class="track-children-panel {% if not forloop.first %}hidden{% endif %} grid grid-cols-2 gap-1">
+                  {% for child in parent.children.all %}
+                    <a href="{% url 'track_detail' child.slug %}" role="menuitem"
+                       class="px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-brand-600">{{ child.name }}</a>
+                  {% empty %}
+                    <p class="text-xs text-gray-400 col-span-2">No tracks yet.</p>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {% if user.is_authenticated %}
         {% if user.is_student %}
           <a href="{% url 'my_learning' %}" class="hover:text-brand-600 dark:hover:text-brand-400">My Learning</a>
@@ -72,22 +106,81 @@
       {% endif %}
     </div>
 
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-2">
+      <div class="relative hidden sm:block">
+        <button type="button" id="search-toggle" aria-label="Search"
+                class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+          <i class="fa-solid fa-magnifying-glass"></i>
+        </button>
+        <form id="search-form" action="{% url 'search_results' %}" method="get"
+              class="hidden absolute right-0 top-full mt-3 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl p-2 z-50">
+          <input type="text" name="q" id="search-input" placeholder="Search tracks & courses..."
+                 class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+        </form>
+      </div>
+
       <button onclick="toggleTheme()" class="w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
         <i class="fa-solid fa-moon dark:hidden"></i>
         <i class="fa-solid fa-sun hidden dark:inline text-yellow-400"></i>
       </button>
 
       {% if user.is_authenticated %}
-        <form method="post" action="{% url 'logout' %}" class="inline">
+        <form method="post" action="{% url 'logout' %}" class="hidden md:inline">
           {% csrf_token %}
           <button type="submit" class="px-4 py-2 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700">Logout</button>
         </form>
       {% else %}
-        <a href="{% url 'login' %}" class="px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-800">Login</a>
-        <a href="{% url 'student_signup' %}" class="px-4 py-2 rounded-lg text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700">Sign Up</a>
+        <a href="{% url 'login' %}" class="hidden md:inline px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-100 dark:hover:bg-gray-800">Login</a>
+        <a href="{% url 'student_signup' %}" class="hidden md:inline px-4 py-2 rounded-lg text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700">Sign Up</a>
       {% endif %}
+
+      <button type="button" id="mobile-menu-btn" aria-label="Menu" aria-expanded="false"
+              class="md:hidden w-10 h-10 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition">
+        <i id="mobile-menu-icon" class="fa-solid fa-bars"></i>
+      </button>
     </div>
+  </div>
+
+  <div id="mobile-menu" class="hidden md:hidden border-t border-gray-200 dark:border-gray-800 px-6 py-4 space-y-1">
+    <form action="{% url 'search_results' %}" method="get" class="mb-3">
+      <input type="text" name="q" placeholder="Search tracks & courses..."
+             class="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent text-sm">
+    </form>
+
+    <a href="{% url 'platform_home' %}" class="block py-2 text-sm font-medium">Home</a>
+
+    <div>
+      <button type="button" class="mobile-track-toggle w-full flex items-center justify-between py-2 text-sm font-medium">
+        Tracks <i class="fa-solid fa-chevron-down text-xs transition-transform"></i>
+      </button>
+      <div class="hidden pl-3 space-y-1">
+        {% for parent in tracks_menu %}
+          <div>
+            <button type="button" class="mobile-parent-toggle w-full flex items-center justify-between py-1.5 text-sm text-gray-600 dark:text-gray-300">
+              {{ parent.name }} <i class="fa-solid fa-chevron-down text-[10px] transition-transform"></i>
+            </button>
+            <div class="hidden pl-3 space-y-1 pb-1">
+              {% for child in parent.children.all %}
+                <a href="{% url 'track_detail' child.slug %}" class="block py-1 text-sm text-gray-500 dark:text-gray-400">{{ child.name }}</a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if user.is_authenticated %}
+      {% if user.is_student %}<a href="{% url 'my_learning' %}" class="block py-2 text-sm font-medium">My Learning</a>{% endif %}
+      {% if user.is_instructor %}<a href="{% url 'instructor_dashboard' %}" class="block py-2 text-sm font-medium">Dashboard</a>{% endif %}
+      {% if user.is_superuser %}<a href="{% url 'admin_dashboard' %}" class="block py-2 text-sm font-medium">Admin Panel</a>{% endif %}
+      <form method="post" action="{% url 'logout' %}" class="pt-2">
+        {% csrf_token %}
+        <button type="submit" class="w-full text-left py-2 text-sm font-medium">Logout</button>
+      </form>
+    {% else %}
+      <a href="{% url 'login' %}" class="block py-2 text-sm font-medium">Login</a>
+      <a href="{% url 'student_signup' %}" class="block py-2 text-sm font-medium text-brand-600">Sign Up</a>
+    {% endif %}
   </div>
 </nav>
 
@@ -126,6 +219,114 @@
     document.documentElement.classList.toggle('dark');
     localStorage.setItem('theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
   }
+
+  // Desktop Tracks mega-menu: hover/click to switch columns, arrow keys +
+  // Esc for keyboard users, closes on an outside click.
+  (function () {
+    const btn = document.getElementById('tracks-btn');
+    const panel = document.getElementById('tracks-panel');
+    const chevron = document.getElementById('tracks-chevron');
+    if (!btn || !panel) return;
+
+    const parentBtns = Array.from(panel.querySelectorAll('.track-parent-btn'));
+
+    function openPanel() {
+      panel.classList.remove('hidden');
+      panel.setAttribute('aria-hidden', 'false');
+      btn.setAttribute('aria-expanded', 'true');
+      chevron.classList.add('rotate-180');
+    }
+    function closePanel() {
+      panel.classList.add('hidden');
+      panel.setAttribute('aria-hidden', 'true');
+      btn.setAttribute('aria-expanded', 'false');
+      chevron.classList.remove('rotate-180');
+    }
+    function showChild(targetId) {
+      panel.querySelectorAll('.track-children-panel').forEach((p) => p.classList.add('hidden'));
+      parentBtns.forEach((b) => b.classList.remove('bg-gray-50', 'dark:bg-gray-800', 'text-brand-600'));
+      const target = document.getElementById(targetId);
+      if (target) target.classList.remove('hidden');
+    }
+
+    btn.addEventListener('click', () => {
+      panel.classList.contains('hidden') ? openPanel() : closePanel();
+    });
+
+    parentBtns.forEach((pBtn) => {
+      const activate = () => {
+        showChild(pBtn.dataset.target);
+        pBtn.classList.add('bg-gray-50', 'dark:bg-gray-800', 'text-brand-600');
+      };
+      pBtn.addEventListener('mouseenter', activate);
+      pBtn.addEventListener('focus', activate);
+      pBtn.addEventListener('click', activate);
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (panel.classList.contains('hidden')) return;
+      const idx = parentBtns.indexOf(document.activeElement);
+      if (e.key === 'Escape') {
+        closePanel();
+        btn.focus();
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (parentBtns[idx + 1] || parentBtns[0]).focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        (parentBtns[idx - 1] || parentBtns[parentBtns.length - 1]).focus();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!panel.classList.contains('hidden') && !panel.contains(e.target) && e.target !== btn) {
+        closePanel();
+      }
+    });
+  })();
+
+  // Desktop search flyout
+  (function () {
+    const toggle = document.getElementById('search-toggle');
+    const form = document.getElementById('search-form');
+    const input = document.getElementById('search-input');
+    if (!toggle || !form) return;
+
+    toggle.addEventListener('click', () => {
+      form.classList.toggle('hidden');
+      if (!form.classList.contains('hidden')) input.focus();
+    });
+    document.addEventListener('click', (e) => {
+      if (!form.classList.contains('hidden') && !form.contains(e.target) && e.target !== toggle) {
+        form.classList.add('hidden');
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') form.classList.add('hidden');
+    });
+  })();
+
+  // Mobile menu + Tracks accordion
+  (function () {
+    const btn = document.getElementById('mobile-menu-btn');
+    const icon = document.getElementById('mobile-menu-icon');
+    const menu = document.getElementById('mobile-menu');
+    if (!btn || !menu) return;
+
+    btn.addEventListener('click', () => {
+      const nowHidden = menu.classList.toggle('hidden');
+      btn.setAttribute('aria-expanded', String(!nowHidden));
+      icon.classList.toggle('fa-bars', nowHidden);
+      icon.classList.toggle('fa-xmark', !nowHidden);
+    });
+
+    menu.querySelectorAll('.mobile-track-toggle, .mobile-parent-toggle').forEach((toggleBtn) => {
+      toggleBtn.addEventListener('click', () => {
+        toggleBtn.nextElementSibling.classList.toggle('hidden');
+        toggleBtn.querySelector('i').classList.toggle('rotate-180');
+      });
+    });
+  })();
 </script>
 {% block extra_js %}{% endblock %}
 </body>

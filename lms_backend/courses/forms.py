@@ -144,13 +144,19 @@ class SubmissionForm(forms.ModelForm):
 class TrackForm(forms.ModelForm):
     class Meta:
         model = Track
-        fields = ['name', 'description', 'icon', 'order']
+        fields = ['parent', 'name', 'description', 'icon', 'order']
         widgets = {
+            'parent': forms.Select(attrs={'class': INPUT_CLASSES}),
             'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'e.g. Web Development'}),
             'description': forms.Textarea(attrs={'class': INPUT_CLASSES, 'rows': 2}),
             'icon': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'fa-laptop-code'}),
             'order': forms.NumberInput(attrs={'class': INPUT_CLASSES}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['parent'].queryset = Track.objects.filter(parent__isnull=True)
+        self.fields['parent'].required = False
 
 
 # Category Form (Admin CRUD)
