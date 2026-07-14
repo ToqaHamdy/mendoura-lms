@@ -6,6 +6,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{% block title %}Mendoura{% endblock %}</title>
 <link rel="stylesheet" href="{% static 'css/tailwind.css' %}">
+<link rel="icon" type="image/svg+xml" href="{% static 'img/icon-square-dark.svg' %}">
+<link rel="icon" type="image/png" sizes="32x32" href="{% static 'img/favicon-32.png' %}">
+<link rel="apple-touch-icon" href="{% static 'img/apple-touch-icon.png' %}">
+<meta name="theme-color" content="#232326">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
@@ -24,8 +28,32 @@
 
 <nav class="sticky top-0 z-50 glass bg-white/80 dark:bg-gray-950/80 border-b border-gray-200 dark:border-gray-800">
   <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-    <a href="{% url 'platform_home' %}" class="flex items-center gap-2 text-2xl font-extrabold text-brand-600 dark:text-brand-400">
-      <i class="fa-solid fa-infinity"></i> Mendoura
+    <a href="{% url 'platform_home' %}" class="flex items-center gap-3 group">
+      <svg viewBox="0 0 92 106" class="w-9 h-9 shrink-0" aria-hidden="true">
+        <defs>
+          <linearGradient id="mendouraNav" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%"   stop-color="#00D9F5"/>
+            <stop offset="55%"  stop-color="#6C3BF0"/>
+            <stop offset="100%" stop-color="#1B2A9E"/>
+          </linearGradient>
+        </defs>
+        <g fill="none" stroke="url(#mendouraNav)" stroke-width="11"
+           stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 94 L8 42 Q8 13 34 27 L58 68 Q84 83 84 42 L84 94"/>
+          <path d="M8 42 Q8 83 34 68 L58 27 Q84 13 84 42"
+                opacity="0.55"
+                class="transition-opacity duration-300 group-hover:opacity-100"/>
+        </g>
+      </svg>
+      <div class="flex flex-col leading-none">
+        <span class="text-lg font-medium tracking-[0.18em] text-gray-900 dark:text-white">
+          MENDOURA
+        </span>
+        <span class="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+          Where your mind explores the new aura
+        </span>
+      </div>
+      <span class="sr-only">Mendoura home</span>
     </a>
 
     <div class="hidden md:flex items-center gap-8 text-sm font-medium">
