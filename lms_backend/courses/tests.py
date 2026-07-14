@@ -1,11 +1,13 @@
 import hashlib
 import hmac
 import json
+import random
 from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -13,7 +15,8 @@ from django.utils import timezone
 from . import paymob
 from .models import (
     Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
-    Payment, Payout, Plan, Review, Subscription, Track, User, WalletTransaction,
+    Payment, Payout, Plan, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
+    Track, User, WalletTransaction, WatchEvent,
 )
 from .money import calculate_split
 
@@ -628,6 +631,195 @@ class SubscriptionAccessControlTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
+class SubscriptionRevenueDistributionTests(TestCase):
+    """Every piastre of a subscriber's payment must land somewhere -- either
+    with an instructor or with the platform -- by construction, not luck."""
+
+    def setUp(self):
+        self.student = User.objects.create_user(username='rev_stud', password='pw', is_student=True)
+        self.instructor_a = User.objects.create_user(
+            username='rev_inst_a', password='pw', is_instructor=True)
+        self.instructor_b = User.objects.create_user(
+            username='rev_inst_b', password='pw', is_instructor=True)
+        track = Track.objects.create(name='Rev Track')
+        self.course_a = Course.objects.create(
+            instructor=self.instructor_a, track=track, title='Course A', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('20.00'),
+            status=Course.Status.PUBLISHED)
+        self.course_b = Course.objects.create(
+            instructor=self.instructor_b, track=track, title='Course B', description='...',
+            production_type=Course.ProductionType.SCRIPT_ONLY, price=Decimal('20.00'),
+            status=Course.Status.PUBLISHED)
+        module_a = Module.objects.create(course=self.course_a, title='M1')
+        module_b = Module.objects.create(course=self.course_b, title='M1')
+        self.lecture_a = Lecture.objects.create(module=module_a, title='L1', duration_seconds=3600)
+        self.lecture_b = Lecture.objects.create(module=module_b, title='L1', duration_seconds=3600)
+
+        self.plan = Plan.objects.create(
+            name='Mendoura Annual Pass', interval=Plan.Interval.ANNUAL,
+            price_egp=Decimal('2000.00'), price_usd=Decimal('65.00'))
+        self.subscription = Subscription.objects.create(
+            student=self.student, plan=self.plan, amount_paid=Decimal('2000.00'),
+            expires_at=timezone.now() - timedelta(days=1),  # already ended -> due for distribution
+        )
+        self.period = SubscriptionPeriod.objects.create(
+            subscription=self.subscription,
+            period_start=timezone.now() - timedelta(days=30),
+            period_end=timezone.now() - timedelta(days=1),
+            amount_paid=Decimal('2000.00'),
+        )
+
+    def _watch(self, lecture, course, seconds, minutes_ago=15):
+        WatchEvent.objects.create(
+            student=self.student, lecture=lecture, course=course, seconds_watched=seconds,
+            occurred_at=self.period.period_start + timedelta(days=1, minutes=minutes_ago))
+
+    def test_worked_example_to_the_piastre(self):
+        self._watch(self.lecture_a, self.course_a, 1800)  # 30 min
+        self._watch(self.lecture_b, self.course_b, 600)   # 10 min
+
+        call_command('distribute_subscription_revenue')
+
+        dist_a = RevenueDistribution.objects.get(course=self.course_a)
+        dist_b = RevenueDistribution.objects.get(course=self.course_b)
+
+        # 1800/2400 = 75% of the EGP 2000 pool
+        self.assertEqual(dist_a.attributed_amount, Decimal('1500.00'))
+        # Flat 60% subscription split -- NOT course_a's own 70/30 production_type rule
+        self.assertEqual(dist_a.instructor_amount, Decimal('900.00'))
+        self.assertEqual(dist_a.platform_amount, Decimal('600.00'))
+
+        # 600/2400 = 25%, but course_b is last (ordered by id) so it gets the
+        # exact remainder rather than a separately-rounded 25% slice
+        self.assertEqual(dist_b.attributed_amount, Decimal('500.00'))
+        self.assertEqual(dist_b.instructor_amount, Decimal('300.00'))
+        self.assertEqual(dist_b.platform_amount, Decimal('200.00'))
+
+        self.assertEqual(dist_a.attributed_amount + dist_b.attributed_amount, Decimal('2000.00'))
+
+        wallet_a = InstructorWallet.objects.get(instructor=self.instructor_a)
+        wallet_b = InstructorWallet.objects.get(instructor=self.instructor_b)
+        self.assertEqual(wallet_a.available_balance, Decimal('900.00'))
+        self.assertEqual(wallet_b.available_balance, Decimal('300.00'))
+
+        self.period.refresh_from_db()
+        self.assertEqual(self.period.status, SubscriptionPeriod.Status.DISTRIBUTED)
+
+    def test_zero_watch_time_does_not_crash_and_keeps_it_all_on_platform(self):
+        call_command('distribute_subscription_revenue')
+        self.assertFalse(RevenueDistribution.objects.exists())
+        self.period.refresh_from_db()
+        self.assertEqual(self.period.status, SubscriptionPeriod.Status.DISTRIBUTED)
+
+    def test_job_run_twice_credits_wallets_once(self):
+        self._watch(self.lecture_a, self.course_a, 1800)
+        self._watch(self.lecture_b, self.course_b, 600)
+
+        call_command('distribute_subscription_revenue')
+        call_command('distribute_subscription_revenue')
+
+        wallet_a = InstructorWallet.objects.get(instructor=self.instructor_a)
+        self.assertEqual(wallet_a.available_balance, Decimal('900.00'))  # not doubled
+        self.assertEqual(RevenueDistribution.objects.filter(course=self.course_a).count(), 1)
+
+    def test_view_under_minimum_threshold_does_not_count(self):
+        self._watch(self.lecture_a, self.course_a, 1800)
+        self._watch(self.lecture_b, self.course_b, 10)  # under the 30s floor
+
+        call_command('distribute_subscription_revenue')
+
+        self.assertFalse(RevenueDistribution.objects.filter(course=self.course_b).exists())
+        dist_a = RevenueDistribution.objects.get(course=self.course_a)
+        self.assertEqual(dist_a.attributed_amount, Decimal('2000.00'))  # gets the whole pool
+
+    def test_instructor_watching_own_course_is_excluded(self):
+        # instructor_a "watches" their own course -- must not earn from it
+        WatchEvent.objects.create(
+            student=self.instructor_a, lecture=self.lecture_a, course=self.course_a,
+            seconds_watched=1800, occurred_at=self.period.period_start + timedelta(days=1))
+        self._watch(self.lecture_b, self.course_b, 600)
+
+        call_command('distribute_subscription_revenue')
+
+        self.assertFalse(RevenueDistribution.objects.filter(course=self.course_a).exists())
+        dist_b = RevenueDistribution.objects.get(course=self.course_b)
+        self.assertEqual(dist_b.attributed_amount, Decimal('2000.00'))
+
+    def test_rewatching_same_lecture_capped_at_double_duration(self):
+        # lecture_a is 3600s long; claim 10x that across several events
+        for _ in range(10):
+            self._watch(self.lecture_a, self.course_a, 3600)
+        self._watch(self.lecture_b, self.course_b, 600)
+
+        call_command('distribute_subscription_revenue')
+
+        dist_a = RevenueDistribution.objects.get(course=self.course_a)
+        # Capped at 2x duration (7200s), not the full 36000s claimed
+        self.assertEqual(dist_a.seconds_watched, 7200)
+
+    def test_distribution_sums_to_pool_across_random_watch_splits(self):
+        courses = []
+        for i in range(5):
+            instructor = User.objects.create_user(username=f'fuzz_inst_{i}', password='pw', is_instructor=True)
+            course = Course.objects.create(
+                instructor=instructor, track=self.course_a.track, title=f'Fuzz Course {i}',
+                description='...', production_type=Course.ProductionType.FULL,
+                price=Decimal('10.00'), status=Course.Status.PUBLISHED)
+            module = Module.objects.create(course=course, title='M1')
+            lecture = Lecture.objects.create(module=module, title='L1', duration_seconds=36000)
+            seconds = random.randint(30, 5000)
+            self._watch(lecture, course, seconds)
+            courses.append(course)
+
+        call_command('distribute_subscription_revenue')
+
+        distributions = RevenueDistribution.objects.filter(period=self.period)
+        total_attributed = sum((d.attributed_amount for d in distributions), Decimal('0.00'))
+        self.assertEqual(total_attributed, Decimal('2000.00'))
+        for dist in distributions:
+            self.assertEqual(dist.instructor_amount + dist.platform_amount, dist.attributed_amount)
+
+    def test_direct_sale_split_unaffected_by_subscription_path(self):
+        self._watch(self.lecture_a, self.course_a, 1800)
+        self._watch(self.lecture_b, self.course_b, 600)
+        call_command('distribute_subscription_revenue')
+
+        # A direct one-off sale on course_a (70% production_type=full) must
+        # still use its own split rule, not the flat 60% subscription rate.
+        payment = Payment.objects.create(
+            student=self.student, course=self.course_a, total_amount=Decimal('20.00'))
+        self.assertEqual(payment.instructor_amount, Decimal('14.00'))  # 70% of $20
+        self.assertEqual(payment.platform_amount, Decimal('6.00'))
+
+    def test_refund_after_distribution_reverses_instructor_credit(self):
+        self._watch(self.lecture_a, self.course_a, 1800)
+        self._watch(self.lecture_b, self.course_b, 600)
+        call_command('distribute_subscription_revenue')
+
+        wallet_a = InstructorWallet.objects.get(instructor=self.instructor_a)
+        self.assertEqual(wallet_a.available_balance, Decimal('900.00'))
+
+        self.subscription.provider_transaction_id = 'sub-txn-refund-1'
+        self.subscription.save()
+
+        nested, signature = _signed_transaction(
+            f'sub{self.plan.id}-student{self.student.id}-abc123',
+            id='sub-txn-refund-1', is_refunded=True)
+
+        with override_settings(PAYMOB_HMAC_SECRET=TEST_HMAC_SECRET):
+            response = self.client.post(
+                f"{reverse('paymob_webhook')}?hmac={signature}",
+                data=json.dumps({'obj': nested}), content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+
+        wallet_a.refresh_from_db()
+        self.assertEqual(wallet_a.available_balance, Decimal('0.00'))
+        self.assertTrue(WalletTransaction.objects.filter(
+            wallet=wallet_a, type=WalletTransaction.Type.REFUND_DEBIT, amount=Decimal('900.00')).exists())
+        self.subscription.refresh_from_db()
+        self.assertEqual(self.subscription.status, Subscription.Status.CANCELED)
+
+
 class SignupDuplicateGuardTests(TestCase):
     def test_duplicate_username_shows_friendly_error(self):
         User.objects.create_user(username='taken', password='pw', email='a@example.com')
@@ -700,11 +892,12 @@ class CheckoutFlowTests(TestCase):
 
     @patch('courses.views.paymob.initiate_checkout')
     def test_checkout_subscription_option_redirects_to_paymob_iframe(self, mock_initiate):
-        Plan.objects.create(name='Mendoura Annual Pass', price_egp=Decimal('1499.00'), price_usd=Decimal('49.00'))
+        plan = Plan.objects.create(name='Mendoura Annual Pass', price_egp=Decimal('1499.00'), price_usd=Decimal('49.00'))
         mock_initiate.return_value = 'https://accept.paymob.com/api/acceptance/iframes/2?payment_token=xyz'
         self.client.force_login(self.student)
         response = self.client.post(
-            reverse('checkout_course', args=[self.paid_course.id]), {'option': 'subscription'})
+            reverse('checkout_course', args=[self.paid_course.id]),
+            {'option': 'subscription', 'plan_id': plan.id})
         self.assertRedirects(
             response, 'https://accept.paymob.com/api/acceptance/iframes/2?payment_token=xyz',
             fetch_redirect_response=False)

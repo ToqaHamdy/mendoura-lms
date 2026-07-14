@@ -14,6 +14,8 @@ urlpatterns = [
     path('courses/<int:course_id>/', views.course_detail, name='course_detail'),
     path('course/<int:course_id>/toggle-publish/', views.toggle_publish, name='toggle_publish'),
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
+    path('dashboard/admin/run-subscription-distribution/', views.run_subscription_distribution,
+         name='run_subscription_distribution'),
 
     # Admin interface
     path('dashboard/admin/courses/', views.course_approval_queue, name='course_approval_queue'),
@@ -50,5 +52,7 @@ urlpatterns = [
     path('learn/<int:course_id>/<int:lecture_id>/', views.course_player, name='course_player'),
     path('learn/<int:course_id>/<int:lecture_id>/complete/', views.mark_lecture_complete,
          name='mark_lecture_complete'),
+    path('learn/<int:course_id>/<int:lecture_id>/watch/', views.record_watch_event,
+         name='record_watch_event'),
     path('certificates/<uuid:certificate_uuid>/', views.certificate_view, name='certificate_view'),
 ]

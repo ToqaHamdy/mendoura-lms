@@ -61,6 +61,32 @@
   </div>
 </section>
 
+<section class="max-w-7xl mx-auto px-6 pb-24">
+  <h2 class="text-2xl font-extrabold mb-2 text-center">{% trans "Simple, transparent pricing" %}</h2>
+  <p class="text-gray-500 dark:text-gray-400 text-center mb-10">{% trans "Buy a single course, or unlock everything with a subscription." %}</p>
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+    <div class="p-8 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+      <span class="text-xs font-semibold text-brand-600 uppercase">{% trans "Single Course" %}</span>
+      <p class="text-2xl font-extrabold mt-4 mb-2">{% trans "Pay per course" %}</p>
+      <p class="text-sm text-gray-500 dark:text-gray-400">{% trans "Lifetime access to just the course you need." %}</p>
+    </div>
+    {% for plan in plans %}
+      <div class="relative p-8 rounded-2xl bg-white dark:bg-gray-900
+        {% if plan.interval == 'annual' %}border-2 border-brand-600 shadow-xl{% else %}border border-gray-200 dark:border-gray-800{% endif %}">
+        {% if plan.interval == 'annual' %}
+          <span class="absolute -top-3 left-8 bg-brand-600 text-white text-xs font-semibold px-3 py-1 rounded-full">{% trans "Best Value" %}</span>
+        {% endif %}
+        <span class="text-xs font-semibold text-brand-600 uppercase">{{ plan.name }}</span>
+        <p class="text-3xl font-extrabold mt-4">{{ plan.price_egp|floatformat:0 }} EGP
+          <span class="text-base font-medium text-gray-400">/{% if plan.interval == 'monthly' %}{% trans "mo" %}{% else %}{% trans "yr" %}{% endif %}</span>
+        </p>
+        <p class="text-sm text-gray-400 mb-4">(~${{ plan.price_usd|floatformat:0 }}/{% if plan.interval == 'monthly' %}{% trans "mo" %}{% else %}{% trans "yr" %}{% endif %})</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400">{% trans "Unlimited access to every track and course." %}</p>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+
 <section class="max-w-7xl mx-auto px-6 pb-24 text-center">
   <p class="text-sm font-semibold text-gray-400 dark:text-gray-500 mb-8">
     {% trans "Collaborating with leading companies and universities to bring you world-class education." %}

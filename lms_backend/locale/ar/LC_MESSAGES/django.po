@@ -4,7 +4,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-07-14 19:49+0000\n"
+"POT-Creation-Date: 2026-07-14 20:50+0000\n"
 "PO-Revision-Date: 2026-07-14 19:49+0000\n"
 "Last-Translator: Mendoura\n"
 "Language-Team: Arabic\n"
@@ -64,16 +64,16 @@ msgid ""
 "Where your mind explores <span class=\"text-brand-600 dark:text-"
 "brand-400\">the new aura.</span>"
 msgstr ""
-"حيث يستكشف عقلك <span class=\"text-brand-600 dark:text-"
-"brand-400\">هالة جديدة.</span>"
+"حيث يستكشف عقلك <span class=\"text-brand-600 dark:text-brand-400\">هالة "
+"جديدة.</span>"
 
 #: templates/platform_home.html:14
 msgid ""
 "Courses built by real instructors, enhanced with AI. Track your progress, "
 "earn certificates, and grow your career."
 msgstr ""
-"دورات صمّمها مدرّبون حقيقيون، ودعّمها الذكاء الاصطناعي. تابع تقدّمك، واحصل "
-"على شهاداتك، وطوّر مسارك المهني."
+"دورات صمّمها مدرّبون حقيقيون، ودعّمها الذكاء الاصطناعي. تابع تقدّمك، واحصل على "
+"شهاداتك، وطوّر مسارك المهني."
 
 #: templates/platform_home.html:18
 msgid "Start Learning"
@@ -111,19 +111,55 @@ msgstr "أرباح المدرّبين"
 msgid "Track your sales and withdraw earnings straight from your dashboard."
 msgstr "تابع مبيعاتك واسحب أرباحك مباشرة من لوحة التحكم."
 
+#: templates/platform_home.html:65
+msgid "Simple, transparent pricing"
+msgstr "أسعار بسيطة وواضحة"
+
 #: templates/platform_home.html:66
+msgid "Buy a single course, or unlock everything with a subscription."
+msgstr "اشترِ دورة واحدة، أو افتح كل شيء عبر الاشتراك."
+
+#: templates/platform_home.html:69
+msgid "Single Course"
+msgstr "دورة واحدة"
+
+#: templates/platform_home.html:70
+msgid "Pay per course"
+msgstr "ادفع لكل دورة"
+
+#: templates/platform_home.html:71
+msgid "Lifetime access to just the course you need."
+msgstr "وصول دائم للدورة التي تحتاجها فقط."
+
+#: templates/platform_home.html:77
+msgid "Best Value"
+msgstr "الأفضل قيمةً"
+
+#: templates/platform_home.html:81 templates/platform_home.html:83
+msgid "mo"
+msgstr "شهر"
+
+#: templates/platform_home.html:81 templates/platform_home.html:83
+msgid "yr"
+msgstr "سنة"
+
+#: templates/platform_home.html:84
+msgid "Unlimited access to every track and course."
+msgstr "وصول غير محدود لكل المسارات والدورات."
+
+#: templates/platform_home.html:92
 msgid ""
 "Collaborating with leading companies and universities to bring you world-"
 "class education."
 msgstr "بالتعاون مع شركات وجامعات رائدة لنقدّم لك تعليمًا عالمي المستوى."
 
-#: templates/platform_home.html:69 templates/platform_home.html:70
-#: templates/platform_home.html:71 templates/platform_home.html:72
-#: templates/platform_home.html:73 templates/platform_home.html:74
+#: templates/platform_home.html:95 templates/platform_home.html:96
+#: templates/platform_home.html:97 templates/platform_home.html:98
+#: templates/platform_home.html:99 templates/platform_home.html:100
 msgid "PARTNER LOGO"
 msgstr "شعار شريك"
 
-#: templates/platform_home.html:77
+#: templates/platform_home.html:103
 msgid ""
 "Placeholder slots -- swap in real logos once partnership agreements are "
 "signed."

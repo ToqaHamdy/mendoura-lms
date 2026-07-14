@@ -67,5 +67,28 @@
     {% endfor %}
   </div>
 
+  <h2 class="text-xl font-bold mb-4 mt-12">Subscription Revenue Distribution</h2>
+  <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6 flex items-center justify-between flex-wrap gap-4">
+    <div>
+      <p class="text-sm text-gray-500 dark:text-gray-400">
+        {% if due_subscription_periods_count %}
+          <span class="font-semibold text-brand-600">{{ due_subscription_periods_count }}</span> subscription period{{ due_subscription_periods_count|pluralize }} ready to distribute to instructors.
+        {% else %}
+          No subscription periods are due for distribution right now.
+        {% endif %}
+      </p>
+      <p class="text-xs text-gray-400 mt-1">
+        No automatic scheduler is wired up on the free Render plan (no Cron Jobs) -- run this manually on a regular basis.
+      </p>
+    </div>
+    <form method="post" action="{% url 'run_subscription_distribution' %}">
+      {% csrf_token %}
+      <button type="submit" class="px-5 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 transition"
+              {% if not due_subscription_periods_count %}disabled{% endif %}>
+        Run Distribution Now
+      </button>
+    </form>
+  </div>
+
 </div>
 {% endblock %}
