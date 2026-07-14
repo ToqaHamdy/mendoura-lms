@@ -30,6 +30,9 @@
   </div>
 
   <h2 class="text-xl font-bold mb-4">Request Payout</h2>
+  <p class="text-xs text-gray-400 mb-3">You can request a payout once a week.
+    {% if next_payout_available_at %}Next available: {{ next_payout_available_at|date:"M d, Y" }}.{% endif %}
+  </p>
   <form method="post" action="{% url 'request_payout' %}" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 mb-12 grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
     {% csrf_token %}
     <div>
@@ -40,7 +43,8 @@
       <label class="block text-sm font-semibold mb-2">Method</label>
       {{ form.method }}
     </div>
-    <button type="submit" class="px-5 py-3 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">
+    <button type="submit" class="px-5 py-3 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            {% if next_payout_available_at %}disabled{% endif %}>
       Request Payout
     </button>
   </form>
