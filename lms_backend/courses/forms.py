@@ -8,8 +8,35 @@ from .models import (
 INPUT_CLASSES = 'w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent focus:ring-2 focus:ring-brand-500 outline-none'
 
 
+class DuplicateGuardMixin:
+    """Friendly, field-specific duplicate errors for signup forms. Username
+    uniqueness is already enforced by UserCreationForm/the model field;
+    email and phone_number aren't unique at the DB level yet, so this is a
+    form-level check only -- a race between two simultaneous signups could
+    still both pass validation. Good enough for now, but not the same
+    guarantee a DB constraint would give."""
+
+    def clean_username(self):
+        username = self.cleaned_data.get('username')
+        if username and User.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError('An account with this username already exists.')
+        return username
+
+    def clean_email(self):
+        email = (self.cleaned_data.get('email') or '').strip().lower()
+        if email and User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError('An account with this email already exists.')
+        return email
+
+    def clean_phone_number(self):
+        phone = (self.cleaned_data.get('phone_number') or '').strip()
+        if phone and User.objects.filter(phone_number=phone).exists():
+            raise forms.ValidationError('An account with this phone number already exists.')
+        return phone
+
+
 # 1. Student Registration Form
-class StudentSignUpForm(UserCreationForm):
+class StudentSignUpForm(DuplicateGuardMixin, UserCreationForm):
     phone_number = forms.CharField(
         max_length=15, required=False,
         widget=forms.TextInput(attrs={'placeholder': 'Phone Number', 'class': INPUT_CLASSES})
@@ -33,7 +60,7 @@ class StudentSignUpForm(UserCreationForm):
 
 
 # 2. Instructor Registration Form
-class InstructorSignUpForm(UserCreationForm):
+class InstructorSignUpForm(DuplicateGuardMixin, UserCreationForm):
     phone_number = forms.CharField(
         max_length=15, required=True,
         widget=forms.TextInput(attrs={'placeholder': 'Phone Number', 'class': INPUT_CLASSES})
@@ -58,6 +85,19 @@ class InstructorSignUpForm(UserCreationForm):
 
 
 # 3. Course Creation Form
+# Legible on both light and dark backgrounds -- the previous version had no
+# explicit text color at all, so typed input inherited whatever gray the
+# surrounding page set, which in dark mode was nearly unreadable against the
+# field background. text-base (16px) also avoids iOS Safari's auto-zoom on
+# focus for anything smaller.
+COURSE_FORM_INPUT_CLASSES = (
+    'w-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-lg p-3 '
+    'text-base leading-relaxed font-medium text-[#1e293b] dark:text-[#f5f5f5] '
+    'placeholder:font-normal placeholder:text-gray-400 dark:placeholder:text-gray-500 '
+    'focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none'
+)
+
+
 class CourseCreationForm(forms.ModelForm):
     class Meta:
         model = Course
@@ -66,33 +106,27 @@ class CourseCreationForm(forms.ModelForm):
         widgets = {
             'title': forms.TextInput(attrs={
                 'placeholder': 'e.g. Introduction to Python',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
+                'class': COURSE_FORM_INPUT_CLASSES,
             }),
             'description': forms.Textarea(attrs={
-                'rows': 3, 'placeholder': 'What is this course about?',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
+                'rows': 4, 'placeholder': 'What is this course about?',
+                'class': COURSE_FORM_INPUT_CLASSES,
             }),
-            'track': forms.Select(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
-            }),
-            'category': forms.Select(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
-            }),
-            'level': forms.Select(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
-            }),
+            'track': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
+            'category': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
+            'level': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
             'production_type': forms.RadioSelect(),
             'price': forms.NumberInput(attrs={
                 'placeholder': '0.00',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
+                'class': COURSE_FORM_INPUT_CLASSES,
             }),
             'thumbnail': forms.ClearableFileInput(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3'
+                'class': f'{COURSE_FORM_INPUT_CLASSES} p-2',
             }),
             'ai_script': forms.Textarea(attrs={
-                'rows': 6,
+                'rows': 8,
                 'placeholder': 'Type the script here. Our AI will turn this text into a professional video lecture.',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-indigo-500 outline-none'
+                'class': COURSE_FORM_INPUT_CLASSES,
             }),
         }
 

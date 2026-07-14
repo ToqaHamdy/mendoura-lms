@@ -1,29 +1,30 @@
 {% extends 'base.html' %}
+{% load i18n %}
 {% block title %}Mendoura — Learn Without Limits{% endblock %}
 
 {% block content %}
 <section class="max-w-7xl mx-auto px-6 pt-20 pb-24 text-center">
   <span class="inline-block px-4 py-1 rounded-full bg-brand-50 dark:bg-brand-600/10 text-brand-600 dark:text-brand-400 text-sm font-semibold mb-6">
-    <i class="fa-solid fa-sparkles mr-1"></i> AI-Powered Learning Platform
+    <i class="fa-solid fa-sparkles mr-1"></i> {% trans "AI-Powered Learning Platform" %}
   </span>
   <h1 class="text-5xl md:text-6xl font-extrabold leading-tight mb-4">
-    Where your mind explores <span class="text-brand-600 dark:text-brand-400">the new aura.</span>
+    {% blocktrans %}Where your mind explores <span class="text-brand-600 dark:text-brand-400">the new aura.</span>{% endblocktrans %}
   </h1>
   <p class="text-lg text-gray-500 dark:text-gray-400 max-w-2xl mx-auto mb-10">
-    Courses built by real instructors, enhanced with AI. Track your progress, earn certificates, and grow your career.
+    {% trans "Courses built by real instructors, enhanced with AI. Track your progress, earn certificates, and grow your career." %}
   </p>
   <div class="flex items-center justify-center gap-4">
     <a href="{% url 'track_list' %}" class="px-8 py-3 rounded-xl bg-brand-600 text-white font-semibold hover:bg-brand-700 transition shadow-lg shadow-brand-600/30">
-      Start Learning
+      {% trans "Start Learning" %}
     </a>
     <a href="{% url 'instructor_signup' %}" class="px-8 py-3 rounded-xl border border-gray-300 dark:border-gray-700 font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition">
-      Become an Instructor
+      {% trans "Become an Instructor" %}
     </a>
   </div>
 </section>
 
 <section class="max-w-7xl mx-auto px-6 pb-24">
-  <h2 class="text-2xl font-extrabold mb-6">Browse by Track</h2>
+  <h2 class="text-2xl font-extrabold mb-6">{% trans "Browse by Track" %}</h2>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
     {% for track in tracks %}
       <a href="{% url 'track_detail' track.slug %}" class="p-6 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 hover:shadow-lg hover:-translate-y-1 transition block">
@@ -41,22 +42,39 @@
     <div class="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-600/10 flex items-center justify-center text-brand-600 dark:text-brand-400 text-xl mb-4">
       <i class="fa-solid fa-robot"></i>
     </div>
-    <h3 class="font-bold text-lg mb-2">AI-Enhanced Lectures</h3>
-    <p class="text-gray-500 dark:text-gray-400 text-sm">Instructors write scripts, AI polishes them into engaging lectures.</p>
+    <h3 class="font-bold text-lg mb-2">{% trans "AI-Enhanced Lectures" %}</h3>
+    <p class="text-gray-500 dark:text-gray-400 text-sm">{% trans "Instructors write scripts, AI polishes them into engaging lectures." %}</p>
   </div>
   <div class="p-8 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
     <div class="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-600/10 flex items-center justify-center text-brand-600 dark:text-brand-400 text-xl mb-4">
       <i class="fa-solid fa-certificate"></i>
     </div>
-    <h3 class="font-bold text-lg mb-2">Verified Certificates</h3>
-    <p class="text-gray-500 dark:text-gray-400 text-sm">Complete courses and earn certificates to showcase your skills.</p>
+    <h3 class="font-bold text-lg mb-2">{% trans "Verified Certificates" %}</h3>
+    <p class="text-gray-500 dark:text-gray-400 text-sm">{% trans "Complete courses and earn certificates to showcase your skills." %}</p>
   </div>
   <div class="p-8 rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-sm">
     <div class="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-600/10 flex items-center justify-center text-brand-600 dark:text-brand-400 text-xl mb-4">
       <i class="fa-solid fa-wallet"></i>
     </div>
-    <h3 class="font-bold text-lg mb-2">Instructor Earnings</h3>
-    <p class="text-gray-500 dark:text-gray-400 text-sm">Track your sales and withdraw earnings straight from your dashboard.</p>
+    <h3 class="font-bold text-lg mb-2">{% trans "Instructor Earnings" %}</h3>
+    <p class="text-gray-500 dark:text-gray-400 text-sm">{% trans "Track your sales and withdraw earnings straight from your dashboard." %}</p>
   </div>
+</section>
+
+<section class="max-w-7xl mx-auto px-6 pb-24 text-center">
+  <p class="text-sm font-semibold text-gray-400 dark:text-gray-500 mb-8">
+    {% trans "Collaborating with leading companies and universities to bring you world-class education." %}
+  </p>
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-6 items-center opacity-60 dark:opacity-40 grayscale">
+    <div class="flex items-center justify-center h-12 border border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{% trans "PARTNER LOGO" %}</div>
+    <div class="flex items-center justify-center h-12 border border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{% trans "PARTNER LOGO" %}</div>
+    <div class="flex items-center justify-center h-12 border border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{% trans "PARTNER LOGO" %}</div>
+    <div class="flex items-center justify-center h-12 border border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{% trans "PARTNER LOGO" %}</div>
+    <div class="flex items-center justify-center h-12 border border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{% trans "PARTNER LOGO" %}</div>
+    <div class="flex items-center justify-center h-12 border border-gray-300 dark:border-gray-700 rounded-lg text-xs font-bold tracking-wide text-gray-500 dark:text-gray-400">{% trans "PARTNER LOGO" %}</div>
+  </div>
+  <p class="text-xs text-gray-400 dark:text-gray-600 mt-6">
+    {% trans "Placeholder slots -- swap in real logos once partnership agreements are signed." %}
+  </p>
 </section>
 {% endblock %}

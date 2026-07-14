@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 from .models import (
     User, Track, TrackRoadmapStep, Category, Course, Module, Lecture, Resource, Submission,
     Payment, Enrollment, LectureProgress, InstructorWallet, WalletTransaction,
-    Payout, Review, Certificate,
+    Payout, Plan, Subscription, Review, Certificate,
 )
 
 
@@ -80,9 +80,22 @@ class PaymentAdmin(admin.ModelAdmin):
 
 @admin.register(Enrollment)
 class EnrollmentAdmin(admin.ModelAdmin):
-    list_display = ('student', 'course', 'enrolled_at')
-    list_filter = ('course',)
+    list_display = ('student', 'course', 'via_subscription', 'enrolled_at')
+    list_filter = ('course', 'via_subscription')
     search_fields = ('student__username', 'course__title')
+
+
+@admin.register(Plan)
+class PlanAdmin(admin.ModelAdmin):
+    list_display = ('name', 'price_egp', 'price_usd', 'duration_days', 'is_active')
+    list_filter = ('is_active',)
+
+
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('student', 'plan', 'status', 'amount_paid', 'currency', 'started_at', 'expires_at')
+    list_filter = ('status', 'plan')
+    search_fields = ('student__username', 'provider_transaction_id')
 
 
 @admin.register(LectureProgress)

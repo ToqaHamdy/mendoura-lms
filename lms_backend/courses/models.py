@@ -320,6 +320,11 @@ class Enrollment(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='enrollments')
     payment = models.ForeignKey(Payment, on_delete=models.SET_NULL, null=True, blank=True,
                                  related_name='enrollment')
+    # True when access came from an active Subscription rather than a free
+    # course or a one-off Payment. Informational only -- access itself is
+    # always re-checked live via student_has_access(), never trusted from
+    # this flag alone, so an expired subscription can't leave stale access.
+    via_subscription = models.BooleanField(default=False)
     enrolled_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -432,6 +437,51 @@ class Payout(models.Model):
 
     def __str__(self):
         return f'{self.wallet.instructor.username} payout ${self.amount} ({self.status})'
+
+
+class Plan(models.Model):
+    """An all-access subscription tier. Only one plan (the annual pass) ships
+    today, but this stays a model -- not a settings constant -- so pricing is
+    admin-editable without a deploy."""
+    name = models.CharField(max_length=100)
+    price_egp = models.DecimalField(max_digits=10, decimal_places=2)
+    price_usd = models.DecimalField(max_digits=10, decimal_places=2)
+    duration_days = models.PositiveIntegerField(default=365)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Subscription(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        EXPIRED = 'expired', 'Expired'
+        CANCELED = 'canceled', 'Canceled'
+
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                                 related_name='subscriptions')
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT, related_name='subscriptions')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+
+    # Frozen at purchase, like Payment's frozen split fields -- a later price
+    # change on Plan must not rewrite what this student actually paid.
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    currency = models.CharField(max_length=3, default='EGP', editable=False)
+
+    started_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    provider_transaction_id = models.CharField(max_length=255, unique=True, null=True, blank=True,
+                                                db_index=True)
+
+    class Meta:
+        ordering = ['-started_at']
+
+    def __str__(self):
+        return f'{self.student} / {self.plan.name} ({self.status})'
+
+    def is_active_now(self):
+        return self.status == self.Status.ACTIVE and self.expires_at > timezone.now()
 
 
 class Review(models.Model):

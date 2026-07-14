@@ -44,5 +44,6 @@ fi
 
 python manage.py migrate
 
-# Idempotent (get_or_create) -- safe to run on every deploy.
+# Idempotent (get_or_create/update_or_create) -- safe to run on every deploy.
 python manage.py seed_tracks
+python manage.py seed_plans
