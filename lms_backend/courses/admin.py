@@ -3,7 +3,8 @@ from django.contrib.auth.admin import UserAdmin
 from .models import (
     User, Track, TrackRoadmapStep, Category, Course, Module, Lecture, Resource, Submission,
     Payment, Enrollment, LectureProgress, InstructorWallet, WalletTransaction,
-    Payout, Plan, Subscription, Review, Certificate,
+    Payout, Plan, Subscription, SubscriptionPeriod, RevenueDistribution, WatchEvent,
+    Review, Certificate,
 )
 
 
@@ -87,8 +88,8 @@ class EnrollmentAdmin(admin.ModelAdmin):
 
 @admin.register(Plan)
 class PlanAdmin(admin.ModelAdmin):
-    list_display = ('name', 'price_egp', 'price_usd', 'duration_days', 'is_active')
-    list_filter = ('is_active',)
+    list_display = ('name', 'interval', 'price_egp', 'price_usd', 'duration_days', 'is_active')
+    list_filter = ('is_active', 'interval')
 
 
 @admin.register(Subscription)
@@ -96,6 +97,27 @@ class SubscriptionAdmin(admin.ModelAdmin):
     list_display = ('student', 'plan', 'status', 'amount_paid', 'currency', 'started_at', 'expires_at')
     list_filter = ('status', 'plan')
     search_fields = ('student__username', 'provider_transaction_id')
+
+
+@admin.register(SubscriptionPeriod)
+class SubscriptionPeriodAdmin(admin.ModelAdmin):
+    list_display = ('subscription', 'period_start', 'period_end', 'amount_paid', 'status', 'distributed_at')
+    list_filter = ('status',)
+
+
+@admin.register(RevenueDistribution)
+class RevenueDistributionAdmin(admin.ModelAdmin):
+    list_display = ('period', 'course', 'instructor', 'seconds_watched',
+                     'instructor_amount', 'platform_amount', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('instructor__username', 'course__title')
+
+
+@admin.register(WatchEvent)
+class WatchEventAdmin(admin.ModelAdmin):
+    list_display = ('student', 'lecture', 'course', 'seconds_watched', 'occurred_at')
+    list_filter = ('occurred_at',)
+    search_fields = ('student__username', 'course__title')
 
 
 @admin.register(LectureProgress)

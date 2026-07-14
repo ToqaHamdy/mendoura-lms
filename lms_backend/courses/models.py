@@ -9,7 +9,7 @@ from django.contrib.auth.models import AbstractUser
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 
-from .money import calculate_split, get_instructor_share
+from .money import SUBSCRIPTION_INSTRUCTOR_SHARE, calculate_split, get_instructor_share
 
 
 class User(AbstractUser):
@@ -440,14 +440,21 @@ class Payout(models.Model):
 
 
 class Plan(models.Model):
-    """An all-access subscription tier. Only one plan (the annual pass) ships
-    today, but this stays a model -- not a settings constant -- so pricing is
-    admin-editable without a deploy."""
+    """An all-access subscription tier. Model, not a settings constant, so
+    pricing is admin-editable without a deploy."""
+    class Interval(models.TextChoices):
+        MONTHLY = 'monthly', 'Monthly'
+        ANNUAL = 'annual', 'Annual'
+
     name = models.CharField(max_length=100)
+    interval = models.CharField(max_length=20, choices=Interval.choices, default=Interval.ANNUAL)
     price_egp = models.DecimalField(max_digits=10, decimal_places=2)
     price_usd = models.DecimalField(max_digits=10, decimal_places=2)
     duration_days = models.PositiveIntegerField(default=365)
     is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['duration_days']
 
     def __str__(self):
         return self.name
@@ -482,6 +489,88 @@ class Subscription(models.Model):
 
     def is_active_now(self):
         return self.status == self.Status.ACTIVE and self.expires_at > timezone.now()
+
+
+class WatchEvent(models.Model):
+    """Append-only raw ledger of watch-time, flushed client-side every ~30s
+    (never one row per heartbeat -- that's millions of rows a day). This is
+    the only source of truth the revenue-distribution job trusts; nothing
+    about "how much a student watched" is ever taken from the client at
+    distribution time, only re-aggregated from these rows."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='watch_events')
+    lecture = models.ForeignKey(Lecture, on_delete=models.PROTECT, related_name='watch_events')
+    course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name='watch_events')
+    seconds_watched = models.PositiveIntegerField()
+    occurred_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-occurred_at']
+
+    def __str__(self):
+        return f'{self.student} watched {self.seconds_watched}s of {self.lecture}'
+
+
+class SubscriptionPeriod(models.Model):
+    """One row per Subscription lifetime (not re-sliced monthly even for the
+    annual plan -- distribution happens once the period ends). amount_paid is
+    a snapshot: the subscription's own price can't retroactively change what
+    was actually paid."""
+    class Status(models.TextChoices):
+        OPEN = 'open', 'Open'
+        DISTRIBUTED = 'distributed', 'Distributed'
+        CANCELED = 'canceled', 'Canceled'
+
+    subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='periods')
+    period_start = models.DateTimeField()
+    period_end = models.DateTimeField()
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    currency = models.CharField(max_length=3, default='EGP', editable=False)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    distributed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-period_start']
+
+    def __str__(self):
+        return f'{self.subscription} period {self.period_start:%Y-%m-%d} - {self.period_end:%Y-%m-%d}'
+
+
+class RevenueDistribution(models.Model):
+    """Audit trail: one row per (period, course) the distribution job pays
+    out. attributed_amount is this course's watch-time share of the whole
+    period's amount_paid; instructor_amount/platform_amount is the flat
+    subscription split (SUBSCRIPTION_INSTRUCTOR_SHARE) applied to that slice
+    -- never the course's own production_type-based split, which only
+    applies to direct one-off sales."""
+    period = models.ForeignKey(SubscriptionPeriod, on_delete=models.PROTECT, related_name='distributions')
+    course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name='revenue_distributions')
+    instructor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                    related_name='revenue_distributions')
+
+    seconds_watched = models.PositiveIntegerField()
+    share_of_period = models.DecimalField(max_digits=7, decimal_places=6)
+    attributed_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    instructor_share_pct = models.DecimalField(max_digits=5, decimal_places=2, editable=False)
+    instructor_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    platform_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+
+    wallet_transaction = models.ForeignKey(WalletTransaction, on_delete=models.PROTECT,
+                                            related_name='revenue_distribution', null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.period} / {self.course}: {self.instructor_amount} to {self.instructor}'
+
+    @property
+    def minutes_watched(self):
+        return self.seconds_watched // 60
+
+    @property
+    def share_of_period_pct(self):
+        return (self.share_of_period * 100).quantize(Decimal('0.1'))
 
 
 class Review(models.Model):

@@ -8,6 +8,11 @@ SPLIT_RULES = {
     'script_only': Decimal('50.00'),  # platform did montage/production
 }
 
+# Subscription-driven revenue is a flat pool, unlike direct sales:
+# production_type does not apply once a course is being paid for out of a
+# subscriber's pool rather than a direct purchase.
+SUBSCRIPTION_INSTRUCTOR_SHARE = Decimal('60.00')
+
 
 def get_instructor_share(production_type: str) -> Decimal:
     try:

@@ -11,6 +11,7 @@ from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
+from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Prefetch, Q, Sum
 from django.db.models.functions import TruncMonth
@@ -27,8 +28,8 @@ from .forms import (
 )
 from .models import (
     Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
-    Module, Payment, Payout, Plan, Resource, Review, Subscription, Track, TrackRoadmapStep,
-    User, WalletTransaction,
+    Module, Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription,
+    SubscriptionPeriod, Track, TrackRoadmapStep, User, WalletTransaction, WatchEvent,
 )
 
 
@@ -44,7 +45,8 @@ def admin_required(view_func):
 # 1. Platform Homepage
 def platform_home(request):
     tracks = Track.objects.filter(parent__isnull=True, is_active=True)
-    return render(request, 'platform_home.html', {'tracks': tracks})
+    plans = Plan.objects.filter(is_active=True)
+    return render(request, 'platform_home.html', {'tracks': tracks, 'plans': plans})
 
 # 2. Student Sign Up View
 def student_signup(request):
@@ -193,12 +195,13 @@ def checkout_course(request, course_id):
     if Enrollment.objects.filter(student=request.user, course=course).exists():
         return redirect('course_detail', course_id=course.id)
 
-    plan = Plan.objects.filter(is_active=True).first()
+    plans = Plan.objects.filter(is_active=True)
 
     if request.method == 'POST':
         option = request.POST.get('option')
+        plan = plans.filter(id=request.POST.get('plan_id')).first() if option == 'subscription' else None
 
-        if option == 'subscription' and plan:
+        if plan:
             merchant_order_id = f'sub{plan.id}-student{request.user.id}-{uuid.uuid4().hex[:10]}'
             amount_cents = int(plan.price_egp * 100)
         else:
@@ -214,7 +217,7 @@ def checkout_course(request, course_id):
 
         return redirect(checkout_url)
 
-    return render(request, 'courses/checkout.html', {'course': course, 'plan': plan})
+    return render(request, 'courses/checkout.html', {'course': course, 'plans': plans})
 
 
 # Paymob webhook -- this is what actually creates the Payment + Enrollment +
@@ -242,12 +245,15 @@ def paymob_webhook(request):
     order = obj.get('order') or {}
     merchant_order_id = order.get('merchant_order_id', '') if isinstance(order, dict) else ''
 
-    if obj.get('is_refunded'):
-        _process_refund(transaction_id)
-        return HttpResponse(status=200)
-
     course_match = re.match(r'course(\d+)-student(\d+)-', merchant_order_id)
     sub_match = re.match(r'sub(\d+)-student(\d+)-', merchant_order_id)
+
+    if obj.get('is_refunded'):
+        if sub_match:
+            _process_subscription_refund(transaction_id)
+        else:
+            _process_refund(transaction_id)
+        return HttpResponse(status=200)
 
     try:
         if course_match:
@@ -290,22 +296,29 @@ def _handle_course_payment(transaction_id, obj, course_id, student_id):
 
 
 def _handle_subscription_payment(transaction_id, obj, plan_id, student_id):
-    # Revenue from subscription-driven course access isn't distributed to
-    # instructors yet -- that needs a watch-time attribution job (tracking
-    # who watched what, pro-rated across instructors) that hasn't been built.
-    # This only grants the student their all-access period.
     with transaction.atomic():
         plan = Plan.objects.get(id=plan_id)
         student = User.objects.get(id=student_id)
         amount = Decimal(str(obj.get('amount_cents', 0))) / Decimal('100')
+        now = timezone.now()
 
-        Subscription.objects.get_or_create(
+        subscription, created = Subscription.objects.get_or_create(
             provider_transaction_id=transaction_id,
             defaults={
                 'student': student, 'plan': plan, 'amount_paid': amount,
-                'currency': 'EGP', 'expires_at': timezone.now() + timedelta(days=plan.duration_days),
+                'currency': 'EGP', 'expires_at': now + timedelta(days=plan.duration_days),
             },
         )
+        if created:
+            # One period spanning the whole subscription term -- distribution
+            # (and instructor payout) happens once the period ends, not
+            # re-sliced monthly even for the annual plan. See
+            # SubscriptionPeriod's docstring for why.
+            SubscriptionPeriod.objects.create(
+                subscription=subscription, period_start=subscription.started_at,
+                period_end=subscription.expires_at, amount_paid=subscription.amount_paid,
+                currency=subscription.currency,
+            )
 
 
 def _process_refund(transaction_id):
@@ -323,6 +336,37 @@ def _process_refund(transaction_id):
         wallet=wallet, type=WalletTransaction.Type.REFUND_DEBIT,
         amount=payment.instructor_amount, balance_after=wallet.available_balance,
         payment=payment, note=f'Refund for transaction {transaction_id}')
+
+
+def _process_subscription_refund(transaction_id):
+    subscription = Subscription.objects.filter(provider_transaction_id=transaction_id).first()
+    if subscription is None:
+        return
+    subscription.status = Subscription.Status.CANCELED
+    subscription.save()
+
+    period = SubscriptionPeriod.objects.filter(subscription=subscription).first()
+    if period is None:
+        return
+
+    if period.status != SubscriptionPeriod.Status.DISTRIBUTED:
+        # Nothing paid out yet -- just close the period so the distribution
+        # job skips it.
+        period.status = SubscriptionPeriod.Status.CANCELED
+        period.save()
+        return
+
+    # Already distributed: reverse each instructor's credit individually.
+    # Never edit the original RevenueDistribution/WalletTransaction rows --
+    # the ledger is append-only, so a refund is its own new entry.
+    for dist in RevenueDistribution.objects.filter(period=period).select_related('instructor'):
+        wallet = InstructorWallet.objects.select_for_update().get(instructor=dist.instructor)
+        wallet.available_balance -= dist.instructor_amount
+        wallet.save()
+        WalletTransaction.objects.create(
+            wallet=wallet, type=WalletTransaction.Type.REFUND_DEBIT,
+            amount=dist.instructor_amount, balance_after=wallet.available_balance,
+            note=f'Refund for subscription {subscription.id}, course "{dist.course.title}"')
 
 
 # Leave a review -- enrolled students only, one review per student per course.
@@ -406,6 +450,52 @@ def mark_lecture_complete(request, course_id, lecture_id):
         enrollment.issue_certificate_if_complete()
 
     return redirect('course_player', course_id=course.id, lecture_id=lecture.id)
+
+
+# Records a client-flushed watch-time heartbeat (aggregated client-side,
+# sent roughly every 30s -- never one row per second). This is the only
+# input the subscription revenue-distribution job trusts; every check here
+# exists because watch-time is now money and a browser client cannot be
+# trusted to report it honestly.
+@login_required
+def record_watch_event(request, course_id, lecture_id):
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+
+    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
+
+    if not student_has_access(request.user, course):
+        return HttpResponseForbidden()
+
+    try:
+        seconds = int(json.loads(request.body).get('seconds', 0))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return HttpResponse(status=400)
+
+    if seconds <= 0:
+        return HttpResponse(status=400)
+
+    # A single flush can't legitimately report more than the lecture's own
+    # runtime plus slack for pause/seek jitter.
+    if lecture.duration_seconds and seconds > lecture.duration_seconds * 1.5:
+        return HttpResponse(status=400)
+
+    last_event = WatchEvent.objects.filter(student=request.user).order_by('-occurred_at').first()
+    if last_event:
+        elapsed = (timezone.now() - last_event.occurred_at).total_seconds()
+        # Reject a duration longer than real wall-clock time has actually
+        # passed since the last heartbeat -- the strongest defense against a
+        # spoofed client claiming impossible watch-time.
+        if seconds > elapsed + 5:
+            return HttpResponse(status=400)
+        # Basic rate limit: a legitimate ~30s flush cadence can't arrive
+        # faster than this.
+        if elapsed < 10:
+            return HttpResponse(status=429)
+
+    WatchEvent.objects.create(student=request.user, lecture=lecture, course=course, seconds_watched=seconds)
+    return HttpResponse(status=204)
 
 
 # Public certificate verification page
@@ -619,10 +709,15 @@ def instructor_wallet(request):
     wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
     transactions = wallet.transactions.all()
     payouts = wallet.payouts.all()
+    revenue_distributions = (
+        RevenueDistribution.objects.filter(instructor=request.user)
+        .select_related('course', 'period')
+    )
     return render(request, 'dashboard/wallet.html', {
         'wallet': wallet,
         'transactions': transactions,
         'payouts': payouts,
+        'revenue_distributions': revenue_distributions,
         'form': PayoutRequestForm(),
     })
 
@@ -687,8 +782,22 @@ def admin_dashboard(request):
              'pct': int((m['revenue'] or 0) * 100 / max_month_revenue)}
             for m in monthly
         ],
+        'due_subscription_periods_count': SubscriptionPeriod.objects.filter(
+            status=SubscriptionPeriod.Status.OPEN, period_end__lte=timezone.now()).count(),
     }
     return render(request, 'dashboard/admin.html', context)
+
+
+# Manually kicks off the subscription revenue-distribution job. The free
+# Render plan has no Cron Jobs and no Shell, so there's no automatic
+# scheduler wired up -- this button is the only way to actually run it in
+# production until the plan is upgraded.
+@admin_required
+def run_subscription_distribution(request):
+    if request.method == 'POST':
+        call_command('distribute_subscription_revenue')
+        messages.success(request, 'Subscription revenue distribution ran successfully.')
+    return redirect('admin_dashboard')
 
 
 # Course approval queue -- admin approves or rejects, instructors cannot self-publish

@@ -96,3 +96,40 @@
 
 </div>
 {% endblock %}
+
+{% block extra_js %}
+{% if enrollment %}
+<script>
+  // Aggregates watch-time client-side and flushes every ~30s -- never one
+  // request per second. Only counts while the tab is actually visible, so
+  // leaving the lecture open in a background tab doesn't accrue credit.
+  (function () {
+    const FLUSH_INTERVAL_MS = 30000;
+    const url = "{% url 'record_watch_event' course.id lecture.id %}";
+    let accumulatedSeconds = 0;
+
+    setInterval(() => {
+      if (document.visibilityState === 'visible') accumulatedSeconds += 1;
+    }, 1000);
+
+    function flush() {
+      if (accumulatedSeconds <= 0) return;
+      const seconds = accumulatedSeconds;
+      accumulatedSeconds = 0;
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+        },
+        body: JSON.stringify({ seconds }),
+        keepalive: true,
+      }).catch(() => {});
+    }
+
+    setInterval(flush, FLUSH_INTERVAL_MS);
+    window.addEventListener('pagehide', flush);
+  })();
+</script>
+{% endif %}
+{% endblock %}
