@@ -63,6 +63,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.locale.LocaleMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -83,6 +84,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'django.template.context_processors.i18n',
                 'courses.context_processors.tracks_menu',
             ],
         },
@@ -127,6 +129,17 @@ AUTH_PASSWORD_VALIDATORS = [
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
+
+# English and Arabic ship with real, reviewed translations. Do not add more
+# LANGUAGES entries with machine-translated .po files -- that's how you end
+# up publishing bad translations under the brand's name. Adding a new
+# language later is just a new locale/<code>/LC_MESSAGES/django.po plus an
+# entry here, no code changes.
+LANGUAGES = [
+    ('en', 'English'),
+    ('ar', 'العربية'),
+]
+LOCALE_PATHS = [BASE_DIR / 'locale']
 
 TIME_ZONE = 'UTC'
 

@@ -7,6 +7,7 @@ from courses import views as courses_views
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('webhooks/paymob/', courses_views.paymob_webhook, name='paymob_webhook'),
+    path('i18n/', include('django.conf.urls.i18n')),  # provides the 'set_language' POST endpoint
     path('', include('courses.urls')),
 ]
 

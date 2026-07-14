@@ -1,17 +1,19 @@
 import hashlib
 import hmac
 import json
+from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from . import paymob
 from .models import (
     Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
-    Payment, Payout, Review, Track, User, WalletTransaction,
+    Payment, Payout, Plan, Review, Subscription, Track, User, WalletTransaction,
 )
 from .money import calculate_split
 
@@ -549,6 +551,112 @@ class PaymobWebhookTests(TestCase):
             wallet=wallet, type=WalletTransaction.Type.REFUND_DEBIT, amount=Decimal('35.00')).exists())
 
 
+@override_settings(PAYMOB_HMAC_SECRET=TEST_HMAC_SECRET)
+class SubscriptionWebhookTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(
+            username='sub_stud', password='pw', is_student=True)
+        self.plan = Plan.objects.create(
+            name='Mendoura Annual Pass', price_egp=Decimal('1499.00'), price_usd=Decimal('49.00'))
+
+    def _post_webhook(self, nested, signature):
+        return self.client.post(
+            f"{reverse('paymob_webhook')}?hmac={signature}",
+            data=json.dumps({'obj': nested}), content_type='application/json')
+
+    def test_successful_subscription_payment_creates_active_subscription(self):
+        merchant_order_id = f'sub{self.plan.id}-student{self.student.id}-abc123'
+        nested, signature = _signed_transaction(merchant_order_id, amount_cents=149900)
+
+        response = self._post_webhook(nested, signature)
+        self.assertEqual(response.status_code, 200)
+
+        subscription = Subscription.objects.get(provider_transaction_id='123456')
+        self.assertEqual(subscription.student, self.student)
+        self.assertEqual(subscription.plan, self.plan)
+        self.assertEqual(subscription.amount_paid, Decimal('1499.00'))
+        self.assertTrue(subscription.is_active_now())
+
+    def test_duplicate_subscription_webhook_does_not_double_create(self):
+        merchant_order_id = f'sub{self.plan.id}-student{self.student.id}-abc123'
+        nested, signature = _signed_transaction(merchant_order_id, amount_cents=149900)
+
+        self._post_webhook(nested, signature)
+        self._post_webhook(nested, signature)
+
+        self.assertEqual(Subscription.objects.filter(provider_transaction_id='123456').count(), 1)
+
+
+class SubscriptionAccessControlTests(TestCase):
+    """An active subscriber gets frictionless access to any paid course
+    without an individual purchase."""
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='sub_access_inst', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='sub_access_stud', password='pw', is_student=True)
+        track = Track.objects.create(name='Cloud & DevOps')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Paid Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('40.00'),
+            status=Course.Status.PUBLISHED,
+        )
+        module = Module.objects.create(course=self.course, title='Module 1')
+        self.locked_lecture = Lecture.objects.create(module=module, title='Deep Dive', is_preview=False)
+        plan = Plan.objects.create(name='Mendoura Annual Pass', price_egp=Decimal('1499.00'),
+                                    price_usd=Decimal('49.00'))
+        self.subscription = Subscription.objects.create(
+            student=self.student, plan=plan, amount_paid=Decimal('1499.00'),
+            expires_at=timezone.now() + timedelta(days=365),
+        )
+
+    def test_active_subscriber_can_watch_locked_lecture_without_buying_course(self):
+        self.client.force_login(self.student)
+        response = self.client.get(
+            reverse('course_player', args=[self.course.id, self.locked_lecture.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Enrollment.objects.filter(
+            student=self.student, course=self.course, via_subscription=True).exists())
+
+    def test_expired_subscriber_cannot_watch_locked_lecture(self):
+        self.subscription.expires_at = timezone.now() - timedelta(days=1)
+        self.subscription.save()
+        self.client.force_login(self.student)
+        response = self.client.get(
+            reverse('course_player', args=[self.course.id, self.locked_lecture.id]))
+        self.assertEqual(response.status_code, 403)
+
+
+class SignupDuplicateGuardTests(TestCase):
+    def test_duplicate_username_shows_friendly_error(self):
+        User.objects.create_user(username='taken', password='pw', email='a@example.com')
+        response = self.client.post(reverse('student_signup'), {
+            'username': 'taken', 'email': 'b@example.com',
+            'password1': 'a-strong-password-1', 'password2': 'a-strong-password-1',
+        })
+        self.assertContains(response, 'An account with this username already exists.')
+        self.assertEqual(User.objects.filter(username='taken').count(), 1)
+
+    def test_duplicate_email_shows_friendly_error(self):
+        User.objects.create_user(username='first', password='pw', email='dup@example.com')
+        response = self.client.post(reverse('student_signup'), {
+            'username': 'second', 'email': 'dup@example.com',
+            'password1': 'a-strong-password-1', 'password2': 'a-strong-password-1',
+        })
+        self.assertContains(response, 'An account with this email already exists.')
+        self.assertFalse(User.objects.filter(username='second').exists())
+
+    def test_duplicate_phone_number_shows_friendly_error(self):
+        User.objects.create_user(username='first_phone', password='pw', phone_number='+201001234567')
+        response = self.client.post(reverse('student_signup'), {
+            'username': 'second_phone', 'email': 'c@example.com', 'phone_number': '+201001234567',
+            'password1': 'a-strong-password-1', 'password2': 'a-strong-password-1',
+        })
+        self.assertContains(response, 'An account with this phone number already exists.')
+        self.assertFalse(User.objects.filter(username='second_phone').exists())
+
+
 class CheckoutFlowTests(TestCase):
     def setUp(self):
         self.instructor = User.objects.create_user(
@@ -569,15 +677,39 @@ class CheckoutFlowTests(TestCase):
                               fetch_redirect_response=False)
         self.assertFalse(Enrollment.objects.filter(student=self.student).exists())
 
-    @patch('courses.views.paymob.initiate_checkout')
-    def test_checkout_redirects_to_paymob_iframe(self, mock_initiate):
-        mock_initiate.return_value = 'https://accept.paymob.com/api/acceptance/iframes/1?payment_token=abc'
+    def test_checkout_page_shows_both_purchase_options(self):
+        Plan.objects.create(name='Mendoura Annual Pass', price_egp=Decimal('1499.00'), price_usd=Decimal('49.00'))
         self.client.force_login(self.student)
         response = self.client.get(reverse('checkout_course', args=[self.paid_course.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Buy This Course')
+        self.assertContains(response, 'Get the Annual Pass')
+
+    @patch('courses.views.paymob.initiate_checkout')
+    def test_checkout_course_option_redirects_to_paymob_iframe(self, mock_initiate):
+        mock_initiate.return_value = 'https://accept.paymob.com/api/acceptance/iframes/1?payment_token=abc'
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('checkout_course', args=[self.paid_course.id]), {'option': 'course'})
         self.assertRedirects(
             response, 'https://accept.paymob.com/api/acceptance/iframes/1?payment_token=abc',
             fetch_redirect_response=False)
         mock_initiate.assert_called_once()
+        amount_cents = mock_initiate.call_args[0][0]
+        self.assertEqual(amount_cents, 3000)  # course price, not the subscription price
+
+    @patch('courses.views.paymob.initiate_checkout')
+    def test_checkout_subscription_option_redirects_to_paymob_iframe(self, mock_initiate):
+        Plan.objects.create(name='Mendoura Annual Pass', price_egp=Decimal('1499.00'), price_usd=Decimal('49.00'))
+        mock_initiate.return_value = 'https://accept.paymob.com/api/acceptance/iframes/2?payment_token=xyz'
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('checkout_course', args=[self.paid_course.id]), {'option': 'subscription'})
+        self.assertRedirects(
+            response, 'https://accept.paymob.com/api/acceptance/iframes/2?payment_token=xyz',
+            fetch_redirect_response=False)
+        amount_cents = mock_initiate.call_args[0][0]
+        self.assertEqual(amount_cents, 149900)  # plan price in EGP cents, not the course price
 
     def test_already_enrolled_student_cannot_start_checkout_again(self):
         Enrollment.objects.create(student=self.student, course=self.paid_course)

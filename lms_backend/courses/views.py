@@ -1,6 +1,7 @@
 import json
 import re
 import uuid
+from datetime import timedelta
 from decimal import Decimal
 from functools import wraps
 
@@ -19,13 +20,15 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from . import paymob
+from .access import get_or_create_enrollment, student_has_access
 from .forms import (
     CategoryForm, CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
     PayoutRequestForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
 )
 from .models import (
     Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
-    Module, Payment, Payout, Resource, Review, Track, TrackRoadmapStep, User, WalletTransaction,
+    Module, Payment, Payout, Plan, Resource, Review, Subscription, Track, TrackRoadmapStep,
+    User, WalletTransaction,
 )
 
 
@@ -125,7 +128,7 @@ def course_detail(request, course_id):
     enrollment = None
     user_review = None
     if request.user.is_authenticated:
-        enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
+        enrollment = get_or_create_enrollment(request.user, course)
         user_review = reviews.filter(student=request.user).first()
 
     can_review = bool(
@@ -158,7 +161,24 @@ def enroll_course(request, course_id):
         messages.success(request, f'You are now enrolled in {course.title}.')
         return redirect('my_learning')
 
+    if student_has_access(request.user, course):
+        # Active subscriber -- no checkout needed, just unlock the course.
+        get_or_create_enrollment(request.user, course)
+        messages.success(request, f'You are now enrolled in {course.title}.')
+        return redirect('my_learning')
+
     return redirect('checkout_course', course_id=course.id)
+
+
+def _paymob_billing_data(user):
+    return {
+        'first_name': user.first_name or user.username,
+        'last_name': user.last_name or 'Student',
+        'email': user.email or f'{user.username}@example.com',
+        'phone_number': user.phone_number or 'NA',
+        'country': 'EG', 'city': 'NA', 'state': 'NA',
+        'street': 'NA', 'building': 'NA', 'floor': 'NA', 'apartment': 'NA',
+    }
 
 
 # Start a Paymob checkout for a paid course. This only redirects the student
@@ -173,23 +193,28 @@ def checkout_course(request, course_id):
     if Enrollment.objects.filter(student=request.user, course=course).exists():
         return redirect('course_detail', course_id=course.id)
 
-    merchant_order_id = f'course{course.id}-student{request.user.id}-{uuid.uuid4().hex[:10]}'
-    amount_cents = int(course.price * 100)
-    billing_data = {
-        'first_name': request.user.first_name or request.user.username,
-        'last_name': request.user.last_name or 'Student',
-        'email': request.user.email or f'{request.user.username}@example.com',
-        'phone_number': request.user.phone_number or 'NA',
-        'country': 'EG', 'city': 'NA', 'state': 'NA',
-        'street': 'NA', 'building': 'NA', 'floor': 'NA', 'apartment': 'NA',
-    }
-    try:
-        checkout_url = paymob.initiate_checkout(amount_cents, merchant_order_id, billing_data)
-    except requests.RequestException:
-        messages.error(request, 'Unable to start checkout right now. Please try again shortly.')
-        return redirect('course_detail', course_id=course.id)
+    plan = Plan.objects.filter(is_active=True).first()
 
-    return redirect(checkout_url)
+    if request.method == 'POST':
+        option = request.POST.get('option')
+
+        if option == 'subscription' and plan:
+            merchant_order_id = f'sub{plan.id}-student{request.user.id}-{uuid.uuid4().hex[:10]}'
+            amount_cents = int(plan.price_egp * 100)
+        else:
+            merchant_order_id = f'course{course.id}-student{request.user.id}-{uuid.uuid4().hex[:10]}'
+            amount_cents = int(course.price * 100)
+
+        try:
+            checkout_url = paymob.initiate_checkout(
+                amount_cents, merchant_order_id, _paymob_billing_data(request.user))
+        except requests.RequestException:
+            messages.error(request, 'Unable to start checkout right now. Please try again shortly.')
+            return redirect('course_detail', course_id=course.id)
+
+        return redirect(checkout_url)
+
+    return render(request, 'courses/checkout.html', {'course': course, 'plan': plan})
 
 
 # Paymob webhook -- this is what actually creates the Payment + Enrollment +
@@ -216,44 +241,71 @@ def paymob_webhook(request):
     transaction_id = str(obj.get('id'))
     order = obj.get('order') or {}
     merchant_order_id = order.get('merchant_order_id', '') if isinstance(order, dict) else ''
-    match = re.match(r'course(\d+)-student(\d+)-', merchant_order_id)
-    if not match:
-        return HttpResponse(status=400)
-    course_id, student_id = int(match.group(1)), int(match.group(2))
+
+    if obj.get('is_refunded'):
+        _process_refund(transaction_id)
+        return HttpResponse(status=200)
+
+    course_match = re.match(r'course(\d+)-student(\d+)-', merchant_order_id)
+    sub_match = re.match(r'sub(\d+)-student(\d+)-', merchant_order_id)
 
     try:
-        with transaction.atomic():
-            course = Course.objects.select_related('instructor').get(id=course_id)
-            student = User.objects.get(id=student_id)
-            amount = Decimal(str(obj.get('amount_cents', 0))) / Decimal('100')
-
-            if obj.get('is_refunded'):
-                _process_refund(transaction_id)
-                return HttpResponse(status=200)
-
-            payment, created = Payment.objects.get_or_create(
-                provider_transaction_id=transaction_id,
-                defaults={
-                    'student': student, 'course': course, 'total_amount': amount,
-                    'status': Payment.Status.SUCCEEDED,
-                },
-            )
-            if created:
-                wallet, _ = InstructorWallet.objects.get_or_create(instructor=course.instructor)
-                wallet = InstructorWallet.objects.select_for_update().get(pk=wallet.pk)
-                wallet.available_balance += payment.instructor_amount
-                wallet.total_earnings += payment.instructor_amount
-                wallet.save()
-                WalletTransaction.objects.create(
-                    wallet=wallet, type=WalletTransaction.Type.SALE_CREDIT,
-                    amount=payment.instructor_amount, balance_after=wallet.available_balance,
-                    payment=payment)
-                Enrollment.objects.get_or_create(
-                    student=student, course=course, defaults={'payment': payment})
+        if course_match:
+            _handle_course_payment(transaction_id, obj, int(course_match.group(1)), int(course_match.group(2)))
+        elif sub_match:
+            _handle_subscription_payment(transaction_id, obj, int(sub_match.group(1)), int(sub_match.group(2)))
+        else:
+            return HttpResponse(status=400)
     except IntegrityError:
         pass  # duplicate webhook delivery for a transaction we've already processed
 
     return HttpResponse(status=200)
+
+
+def _handle_course_payment(transaction_id, obj, course_id, student_id):
+    with transaction.atomic():
+        course = Course.objects.select_related('instructor').get(id=course_id)
+        student = User.objects.get(id=student_id)
+        amount = Decimal(str(obj.get('amount_cents', 0))) / Decimal('100')
+
+        payment, created = Payment.objects.get_or_create(
+            provider_transaction_id=transaction_id,
+            defaults={
+                'student': student, 'course': course, 'total_amount': amount,
+                'status': Payment.Status.SUCCEEDED,
+            },
+        )
+        if created:
+            wallet, _ = InstructorWallet.objects.get_or_create(instructor=course.instructor)
+            wallet = InstructorWallet.objects.select_for_update().get(pk=wallet.pk)
+            wallet.available_balance += payment.instructor_amount
+            wallet.total_earnings += payment.instructor_amount
+            wallet.save()
+            WalletTransaction.objects.create(
+                wallet=wallet, type=WalletTransaction.Type.SALE_CREDIT,
+                amount=payment.instructor_amount, balance_after=wallet.available_balance,
+                payment=payment)
+            Enrollment.objects.get_or_create(
+                student=student, course=course, defaults={'payment': payment})
+
+
+def _handle_subscription_payment(transaction_id, obj, plan_id, student_id):
+    # Revenue from subscription-driven course access isn't distributed to
+    # instructors yet -- that needs a watch-time attribution job (tracking
+    # who watched what, pro-rated across instructors) that hasn't been built.
+    # This only grants the student their all-access period.
+    with transaction.atomic():
+        plan = Plan.objects.get(id=plan_id)
+        student = User.objects.get(id=student_id)
+        amount = Decimal(str(obj.get('amount_cents', 0))) / Decimal('100')
+
+        Subscription.objects.get_or_create(
+            provider_transaction_id=transaction_id,
+            defaults={
+                'student': student, 'plan': plan, 'amount_paid': amount,
+                'currency': 'EGP', 'expires_at': timezone.now() + timedelta(days=plan.duration_days),
+            },
+        )
 
 
 def _process_refund(transaction_id):
@@ -305,14 +357,13 @@ def course_player(request, course_id, lecture_id):
     course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
     lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
 
-    enrollment = None
-    if request.user.is_authenticated:
-        enrollment = Enrollment.objects.filter(student=request.user, course=course).first()
-
-    if enrollment is None and not lecture.is_preview:
+    has_access = request.user.is_authenticated and student_has_access(request.user, course)
+    if not has_access and not lecture.is_preview:
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         return HttpResponseForbidden('Enroll in this course to watch this lecture.')
+
+    enrollment = get_or_create_enrollment(request.user, course) if has_access else None
 
     modules = course.modules.prefetch_related('lectures').order_by('order')
     all_lectures = list(Lecture.objects.filter(module__course=course).order_by('module__order', 'order'))
