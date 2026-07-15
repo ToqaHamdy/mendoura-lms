@@ -1,0 +1,163 @@
+# French translations for Mendoura -- STUB ONLY.
+# Every msgstr below is intentionally blank: Django falls back to the
+# English msgid when a translation is empty, which is safer than shipping
+# a machine-translated guess under the Mendoura brand. Fill these in with
+# real, reviewed French before treating this as a supported language.
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-07-14 21:14+0000\n"
+"PO-Revision-Date: 2026-07-14 21:14+0000\n"
+"Last-Translator: Mendoura\n"
+"Language-Team: French\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+#: templates/base.html:60 templates/base.html:154
+msgid "Home"
+msgstr ""
+
+#: templates/base.html:65 templates/base.html:158
+msgid "Tracks"
+msgstr ""
+
+#: templates/base.html:98 templates/base.html:177
+msgid "My Learning"
+msgstr ""
+
+#: templates/base.html:101 templates/base.html:178
+msgid "Dashboard"
+msgstr ""
+
+#: templates/base.html:104 templates/base.html:179
+msgid "Admin Panel"
+msgstr ""
+
+#: templates/base.html:117 templates/base.html:150
+msgid "Search tracks & courses..."
+msgstr ""
+
+#: templates/base.html:134 templates/base.html:182
+msgid "Logout"
+msgstr ""
+
+#: templates/base.html:137 templates/base.html:185
+msgid "Login"
+msgstr ""
+
+#: templates/base.html:138 templates/base.html:186
+msgid "Sign Up"
+msgstr ""
+
+#: templates/partials/_language_switcher.html:5
+msgid "Language"
+msgstr ""
+
+#: templates/platform_home.html:8
+msgid "AI-Powered Learning Platform"
+msgstr ""
+
+#: templates/platform_home.html:11
+msgid ""
+"Where your mind explores <span class=\"text-brand-600 dark:text-"
+"brand-400\">the new aura.</span>"
+msgstr ""
+
+#: templates/platform_home.html:14
+msgid ""
+"Courses built by real instructors, enhanced with AI. Track your progress, "
+"earn certificates, and grow your career."
+msgstr ""
+
+#: templates/platform_home.html:18
+msgid "Start Learning"
+msgstr ""
+
+#: templates/platform_home.html:21
+msgid "Become an Instructor"
+msgstr ""
+
+#: templates/platform_home.html:27
+msgid "Browse by Track"
+msgstr ""
+
+#: templates/platform_home.html:45
+msgid "AI-Enhanced Lectures"
+msgstr ""
+
+#: templates/platform_home.html:46
+msgid "Instructors write scripts, AI polishes them into engaging lectures."
+msgstr ""
+
+#: templates/platform_home.html:52
+msgid "Verified Certificates"
+msgstr ""
+
+#: templates/platform_home.html:53
+msgid "Complete courses and earn certificates to showcase your skills."
+msgstr ""
+
+#: templates/platform_home.html:59
+msgid "Instructor Earnings"
+msgstr ""
+
+#: templates/platform_home.html:60
+msgid "Track your sales and withdraw earnings straight from your dashboard."
+msgstr ""
+
+#: templates/platform_home.html:65
+msgid "Simple, transparent pricing"
+msgstr ""
+
+#: templates/platform_home.html:66
+msgid "Buy a single course, or unlock everything with a subscription."
+msgstr ""
+
+#: templates/platform_home.html:69
+msgid "Single Course"
+msgstr ""
+
+#: templates/platform_home.html:70
+msgid "Pay per course"
+msgstr ""
+
+#: templates/platform_home.html:71
+msgid "Lifetime access to just the course you need."
+msgstr ""
+
+#: templates/platform_home.html:77
+msgid "Best Value"
+msgstr ""
+
+#: templates/platform_home.html:81 templates/platform_home.html:83
+msgid "mo"
+msgstr ""
+
+#: templates/platform_home.html:81 templates/platform_home.html:83
+msgid "yr"
+msgstr ""
+
+#: templates/platform_home.html:84
+msgid "Unlimited access to every track and course."
+msgstr ""
+
+#: templates/platform_home.html:92
+msgid ""
+"Collaborating with leading companies and universities to bring you world-"
+"class education."
+msgstr ""
+
+#: templates/platform_home.html:95 templates/platform_home.html:96
+#: templates/platform_home.html:97 templates/platform_home.html:98
+#: templates/platform_home.html:99 templates/platform_home.html:100
+msgid "PARTNER LOGO"
+msgstr ""
+
+#: templates/platform_home.html:103
+msgid ""
+"Placeholder slots -- swap in real logos once partnership agreements are "
+"signed."
+msgstr ""
