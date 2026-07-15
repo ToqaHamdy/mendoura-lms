@@ -47,3 +47,8 @@ python manage.py migrate
 # Idempotent (get_or_create/update_or_create) -- safe to run on every deploy.
 python manage.py seed_tracks
 python manage.py seed_plans
+
+# No-op unless DJANGO_SUPERUSER_USERNAME/PASSWORD are set in Render's
+# environment variables -- see the "seed_admin" section of the README/PR
+# notes for how to actually get an admin login on a Shell-less free plan.
+python manage.py seed_admin

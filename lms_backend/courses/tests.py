@@ -294,6 +294,36 @@ class PayoutRequestTests(TestCase):
         self.assertEqual(Payout.objects.filter(wallet=self.wallet).count(), 1)
 
 
+class MisfiledCourseDetectionTests(TestCase):
+    """The admin dashboard must surface any course that can never appear on
+    a student browse page (filed under a parent category, or no track at
+    all) so it can be found without a database console."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username='misfile_admin', password='pw')
+        self.instructor = User.objects.create_user(
+            username='misfile_inst', password='pw', is_instructor=True)
+        self.parent = Track.objects.create(name='Tech Parent')
+        self.leaf = Track.objects.create(name='Web Development Leaf', parent=self.parent)
+
+    def test_course_under_parent_track_is_flagged(self):
+        course = Course.objects.create(
+            instructor=self.instructor, track=self.parent, title='Misfiled Course',
+            description='...', production_type=Course.ProductionType.FULL, price=Decimal('0.00'))
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertContains(response, 'Misfiled Course')
+        self.assertIn(course, response.context['misfiled_courses'])
+
+    def test_course_under_leaf_track_is_not_flagged(self):
+        Course.objects.create(
+            instructor=self.instructor, track=self.leaf, title='Fine Course',
+            description='...', production_type=Course.ProductionType.FULL, price=Decimal('0.00'))
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('admin_dashboard'))
+        self.assertNotContains(response, 'Fine Course')
+
+
 class AdminGuardTests(TestCase):
     """Every admin view must be guarded by a real permission check in the view."""
 
@@ -909,3 +939,37 @@ class CheckoutFlowTests(TestCase):
         self.client.force_login(self.student)
         response = self.client.get(reverse('checkout_course', args=[self.paid_course.id]))
         self.assertRedirects(response, reverse('course_detail', args=[self.paid_course.id]))
+
+
+class SeedAdminCommandTests(TestCase):
+    """The only way to get an admin login on a Shell-less Render free plan
+    is this command running at build time, so it must actually work."""
+
+    def test_noop_without_env_vars(self):
+        call_command('seed_admin')
+        self.assertFalse(User.objects.filter(is_superuser=True).exists())
+
+    def test_creates_superuser_when_env_vars_set(self):
+        with patch('courses.management.commands.seed_admin.config') as mock_config:
+            mock_config.side_effect = lambda key, default='': {
+                'DJANGO_SUPERUSER_USERNAME': 'siteadmin',
+                'DJANGO_SUPERUSER_PASSWORD': 'a-strong-password-1',
+                'DJANGO_SUPERUSER_EMAIL': 'admin@example.com',
+            }.get(key, default)
+            call_command('seed_admin')
+
+        admin = User.objects.get(username='siteadmin')
+        self.assertTrue(admin.is_superuser)
+        self.assertTrue(admin.is_staff)
+        self.assertTrue(admin.check_password('a-strong-password-1'))
+
+    def test_idempotent_on_second_run(self):
+        with patch('courses.management.commands.seed_admin.config') as mock_config:
+            mock_config.side_effect = lambda key, default='': {
+                'DJANGO_SUPERUSER_USERNAME': 'siteadmin2',
+                'DJANGO_SUPERUSER_PASSWORD': 'a-strong-password-1',
+            }.get(key, default)
+            call_command('seed_admin')
+            call_command('seed_admin')
+
+        self.assertEqual(User.objects.filter(username='siteadmin2').count(), 1)
