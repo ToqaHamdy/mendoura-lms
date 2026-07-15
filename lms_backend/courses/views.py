@@ -785,7 +785,18 @@ def admin_dashboard(request):
                .values('month').annotate(revenue=Sum('total_amount')).order_by('month'))
     max_month_revenue = max([m['revenue'] for m in monthly], default=0) or 1
 
+    # A course filed directly under a parent category (e.g. "Tech" instead
+    # of "Web Development") has no course list of its own to appear in, so
+    # it's silently invisible to students on every browse page. The
+    # create-course form no longer allows this, but flag any course that
+    # was already misfiled before that fix.
+    misfiled_courses = (
+        Course.objects.filter(track__parent__isnull=True)
+        .select_related('track', 'instructor')
+    )
+
     context = {
+        'misfiled_courses': misfiled_courses,
         'total_students': User.objects.filter(is_student=True).count(),
         'total_instructors': User.objects.filter(is_instructor=True).count(),
         'total_courses': Course.objects.count(),
