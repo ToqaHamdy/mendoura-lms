@@ -21,11 +21,19 @@
             <span class="w-8 h-8 flex items-center justify-center rounded-full bg-brand-50 dark:bg-gray-800 text-brand-600 font-bold text-sm">{{ lecture.order }}</span>
             <p class="font-semibold">{{ lecture.title }}</p>
           </div>
-          {% if lecture.is_preview %}
-            <span class="bg-brand-50 dark:bg-brand-600/10 text-brand-600 px-2 py-1 rounded-full text-xs font-semibold">Free Preview</span>
-          {% endif %}
+          <div class="flex items-center gap-3">
+            {% if lecture.is_preview %}
+              <span class="bg-brand-50 dark:bg-brand-600/10 text-brand-600 px-2 py-1 rounded-full text-xs font-semibold">Free Preview</span>
+            {% endif %}
+            <a href="{% url 'edit_lecture' lecture.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Edit</a>
+            <form method="post" action="{% url 'delete_lecture' lecture.id %}"
+                  onsubmit="return confirm('Delete {{ lecture.title|escapejs }}?');">
+              {% csrf_token %}
+              <button type="submit" class="text-sm font-semibold text-red-600 hover:underline">Delete</button>
+            </form>
+          </div>
         </div>
-        <div class="flex flex-wrap gap-3 mt-3 text-sm">
+        <div class="flex flex-wrap gap-3 mt-3 text-sm items-center">
           {% if lecture.video_url %}
             <a href="{{ lecture.video_url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-link"></i> Video Link</a>
           {% endif %}
@@ -33,7 +41,14 @@
             <a href="{{ lecture.video_file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-video"></i> Video File</a>
           {% endif %}
           {% for resource in lecture.resources.all %}
-            <a href="{{ resource.file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-paperclip"></i> {{ resource.title|default:"Resource" }}</a>
+            <span class="inline-flex items-center gap-1">
+              <a href="{{ resource.file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-paperclip"></i> {{ resource.title|default:"Resource" }}</a>
+              <form method="post" action="{% url 'delete_resource' resource.id %}" class="inline"
+                    onsubmit="return confirm('Remove this resource?');">
+                {% csrf_token %}
+                <button type="submit" class="text-red-500 hover:underline text-xs">&times;</button>
+              </form>
+            </span>
           {% endfor %}
         </div>
         <form method="post" action="{% url 'add_resource' lecture.id %}" enctype="multipart/form-data" class="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">

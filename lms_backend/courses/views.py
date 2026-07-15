@@ -13,9 +13,9 @@ from django.contrib.auth.views import redirect_to_login
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.core.management import call_command
 from django.db import IntegrityError, transaction
-from django.db.models import Avg, Count, Prefetch, Q, Sum
+from django.db.models import Avg, Count, Prefetch, ProtectedError, Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import HttpResponse, HttpResponseForbidden
+from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
@@ -24,7 +24,7 @@ from . import paymob
 from .access import get_or_create_enrollment, student_has_access
 from .forms import (
     CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
-    PayoutRequestForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
+    PayoutRequestForm, ProfileForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
 )
 from .models import (
     Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
@@ -47,6 +47,21 @@ def platform_home(request):
     tracks = Track.objects.filter(parent__isnull=True, is_active=True)
     plans = Plan.objects.filter(is_active=True)
     return render(request, 'platform_home.html', {'tracks': tracks, 'plans': plans})
+
+# Profile settings -- currently just the avatar, open to any authenticated
+# user regardless of role.
+@login_required
+def profile(request):
+    if request.method == 'POST':
+        form = ProfileForm(request.POST, request.FILES, instance=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Profile updated.')
+            return redirect('profile')
+    else:
+        form = ProfileForm(instance=request.user)
+    return render(request, 'dashboard/profile.html', {'form': form})
+
 
 # 2. Student Sign Up View
 def student_signup(request):
@@ -114,6 +129,26 @@ def _with_stats(queryset):
     return queryset.annotate(avg_rating=Avg('reviews__rating'), enrolled_count=Count('enrollments'))
 
 
+def _can_preview_unpublished(user, course):
+    """The owning instructor and admins can always see their own course
+    regardless of status (draft, pending review, archived, ...) -- everyone
+    else only when it's actually published."""
+    return user.is_authenticated and (course.instructor_id == user.id or user.is_superuser)
+
+
+def _reenter_review_if_published(request, course):
+    """Editing a live course's content must not silently change what
+    students already see -- it goes back through admin review instead.
+    Already-enrolled students keep access regardless (see course_player/
+    course_detail, which never gate on status for them), so nothing they
+    already paid for disappears while the edit is pending."""
+    if course.status == Course.Status.PUBLISHED:
+        course.status = Course.Status.PENDING_REVIEW
+        course.rejection_reason = ''
+        course.save()
+        messages.info(request, f'{course.title} was live, so this change has been resubmitted for admin review.')
+
+
 # 6. Course Catalog - Browse all published courses
 def course_catalog(request):
     courses = _with_stats(
@@ -122,8 +157,7 @@ def course_catalog(request):
 
 # 7. Course Detail - View a single course + its curriculum
 def course_detail(request, course_id):
-    course = get_object_or_404(
-        _with_stats(Course.objects.all()), id=course_id, status=Course.Status.PUBLISHED)
+    course = get_object_or_404(_with_stats(Course.objects.all()), id=course_id)
     modules = course.modules.prefetch_related('lectures').order_by('order')
     reviews = course.reviews.select_related('student').order_by('-created_at')
 
@@ -132,6 +166,12 @@ def course_detail(request, course_id):
     if request.user.is_authenticated:
         enrollment = get_or_create_enrollment(request.user, course)
         user_review = reviews.filter(student=request.user).first()
+
+    # Not published: only visible to someone who already has a reason to see
+    # it (enrolled, the owning instructor, or an admin) -- not the public.
+    if course.status != Course.Status.PUBLISHED and enrollment is None \
+            and not _can_preview_unpublished(request.user, course):
+        raise Http404
 
     can_review = bool(
         request.user.is_authenticated and request.user.is_student
@@ -398,11 +438,18 @@ def my_learning(request):
 # Course Player - watch a lecture. Preview lectures are open to anyone;
 # everything else requires an active enrollment.
 def course_player(request, course_id, lecture_id):
-    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    course = get_object_or_404(Course, id=course_id)
     lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
 
     has_access = request.user.is_authenticated and student_has_access(request.user, course)
-    if not has_access and not lecture.is_preview:
+    is_owner_or_admin = _can_preview_unpublished(request.user, course)
+
+    # Not published: same rule as course_detail -- invisible to the public,
+    # regardless of preview flag, unless already enrolled or the owner/admin.
+    if course.status != Course.Status.PUBLISHED and not has_access and not is_owner_or_admin:
+        raise Http404
+
+    if not has_access and not is_owner_or_admin and not lecture.is_preview:
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
         return HttpResponseForbidden('Enroll in this course to watch this lecture.')
@@ -438,7 +485,7 @@ def course_player(request, course_id, lecture_id):
 # Mark a lecture complete for the current student's enrollment
 @login_required
 def mark_lecture_complete(request, course_id, lecture_id):
-    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    course = get_object_or_404(Course, id=course_id)
     lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
     enrollment = get_object_or_404(Enrollment, student=request.user, course=course)
 
@@ -462,7 +509,7 @@ def record_watch_event(request, course_id, lecture_id):
     if request.method != 'POST':
         return HttpResponse(status=405)
 
-    course = get_object_or_404(Course, id=course_id, status=Course.Status.PUBLISHED)
+    course = get_object_or_404(Course, id=course_id)
     lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course)
 
     if not student_has_access(request.user, course):
@@ -628,6 +675,66 @@ def toggle_publish(request, course_id):
     return redirect('instructor_dashboard')
 
 
+# Edit an existing course's own details. If it was live, the edit resubmits
+# it for review rather than silently changing what students already see.
+@login_required
+def edit_course(request, course_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    if request.method == 'POST':
+        form = CourseCreationForm(request.POST, request.FILES, instance=course)
+        # production_type is frozen once a course has its first successful
+        # sale (Course.save() enforces this) -- disable the field so a
+        # resubmitted, unchanged value can't trip that check.
+        if course.has_successful_sale():
+            form.fields['production_type'].disabled = True
+        if form.is_valid():
+            was_published = course.status == Course.Status.PUBLISHED
+            form.save()
+            if was_published:
+                _reenter_review_if_published(request, course)
+            else:
+                messages.success(request, f'{course.title} updated.')
+            return redirect('instructor_dashboard')
+    else:
+        form = CourseCreationForm(instance=course)
+        if course.has_successful_sale():
+            form.fields['production_type'].disabled = True
+    return render(request, 'dashboard/edit_course.html', {'form': form, 'course': course})
+
+
+# Archives instead of hard-deleting whenever the course has any history a
+# student is relying on (an enrollment, a payment, watch-time, revenue
+# distributions) -- on_delete=PROTECT on Payment/RevenueDistribution/
+# WatchEvent backs this up at the DB level for anything this check misses.
+@login_required
+def delete_course(request, course_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    if request.method == 'POST':
+        has_history = (
+            Enrollment.objects.filter(course=course).exists()
+            or Payment.objects.filter(course=course).exists()
+        )
+        if has_history:
+            course.status = Course.Status.ARCHIVED
+            course.save()
+            messages.success(
+                request,
+                f'{course.title} has enrollment or payment history, so it has been archived '
+                'instead of deleted.')
+        else:
+            try:
+                course.delete()
+                messages.success(request, f'{course.title} has been deleted.')
+            except ProtectedError:
+                course.status = Course.Status.ARCHIVED
+                course.save()
+                messages.success(
+                    request,
+                    f'{course.title} has watch-time or revenue history, so it has been archived '
+                    'instead of deleted.')
+    return redirect('instructor_dashboard')
+
+
 # Manage a course's Modules (the sections of the curriculum)
 @login_required
 def manage_modules(request, course_id):
@@ -640,6 +747,7 @@ def manage_modules(request, course_id):
             module = form.save(commit=False)
             module.course = course
             module.save()
+            _reenter_review_if_published(request, course)
             return redirect('manage_modules', course_id=course.id)
     else:
         form = ModuleForm()
@@ -647,6 +755,37 @@ def manage_modules(request, course_id):
     return render(request, 'dashboard/manage_modules.html', {
         'course': course, 'modules': modules, 'form': form,
     })
+
+
+@login_required
+def edit_module(request, course_id, module_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    module = get_object_or_404(Module, id=module_id, course=course)
+    if request.method == 'POST':
+        form = ModuleForm(request.POST, instance=module)
+        if form.is_valid():
+            form.save()
+            _reenter_review_if_published(request, course)
+            return redirect('manage_modules', course_id=course.id)
+    else:
+        form = ModuleForm(instance=module)
+    return render(request, 'dashboard/edit_module.html', {'course': course, 'module': module, 'form': form})
+
+
+@login_required
+def delete_module(request, course_id, module_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    module = get_object_or_404(Module, id=module_id, course=course)
+    if request.method == 'POST':
+        try:
+            module.delete()
+            _reenter_review_if_published(request, course)
+        except ProtectedError:
+            messages.error(
+                request,
+                f'"{module.title}" has watch-time history on one of its lectures and cannot be '
+                'deleted.')
+    return redirect('manage_modules', course_id=course.id)
 
 
 # Add lectures to a specific Module
@@ -662,6 +801,7 @@ def manage_lectures(request, course_id, module_id):
             lecture = form.save(commit=False)
             lecture.module = module
             lecture.save()
+            _reenter_review_if_published(request, course)
             return redirect('manage_lectures', course_id=course.id, module_id=module.id)
     else:
         form = LectureForm()
@@ -673,6 +813,38 @@ def manage_lectures(request, course_id, module_id):
         'form': form,
         'resource_form': ResourceForm(),
     })
+
+
+@login_required
+def edit_lecture(request, lecture_id):
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course__instructor=request.user)
+    course = lecture.module.course
+    if request.method == 'POST':
+        form = LectureForm(request.POST, request.FILES, instance=lecture)
+        if form.is_valid():
+            form.save()
+            _reenter_review_if_published(request, course)
+            return redirect('manage_lectures', course_id=course.id, module_id=lecture.module_id)
+    else:
+        form = LectureForm(instance=lecture)
+    return render(request, 'dashboard/edit_lecture.html', {
+        'course': course, 'module': lecture.module, 'lecture': lecture, 'form': form,
+    })
+
+
+@login_required
+def delete_lecture(request, lecture_id):
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course__instructor=request.user)
+    course_id, module_id = lecture.module.course_id, lecture.module_id
+    if request.method == 'POST':
+        try:
+            course = lecture.module.course
+            lecture.delete()
+            _reenter_review_if_published(request, course)
+        except ProtectedError:
+            messages.error(
+                request, f'"{lecture.title}" has watch-time history and cannot be deleted.')
+    return redirect('manage_lectures', course_id=course_id, module_id=module_id)
 
 
 # Attach a downloadable Resource to a lecture
@@ -687,7 +859,17 @@ def add_resource(request, lecture_id):
             if resource.file:
                 resource.file_size = resource.file.size
             resource.save()
+            _reenter_review_if_published(request, lecture.module.course)
     return redirect('manage_lectures', course_id=lecture.module.course_id, module_id=lecture.module_id)
+
+
+@login_required
+def delete_resource(request, resource_id):
+    resource = get_object_or_404(Resource, id=resource_id, lecture__module__course__instructor=request.user)
+    course_id, module_id = resource.lecture.module.course_id, resource.lecture.module_id
+    if request.method == 'POST':
+        resource.delete()
+    return redirect('manage_lectures', course_id=course_id, module_id=module_id)
 
 
 # Per-course enrolled student list

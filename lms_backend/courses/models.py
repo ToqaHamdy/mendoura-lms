@@ -16,9 +16,16 @@ class User(AbstractUser):
     is_student = models.BooleanField(default=False)
     is_instructor = models.BooleanField(default=False)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
+    # Uses the default storage backend (Cloudinary -- see STORAGES in
+    # settings.py), same as course thumbnails.
+    avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
 
     def __str__(self):
         return self.username
+
+    @property
+    def initials(self):
+        return (self.username[:1] or '?').upper()
 
 
 def _unique_slugify(instance, base_value, slug_field='slug'):
@@ -100,6 +107,11 @@ class Course(models.Model):
         PENDING_REVIEW = 'pending_review', 'Pending Review'
         PUBLISHED = 'published', 'Published'
         REJECTED = 'rejected', 'Rejected'
+        # "Deleted" from the instructor's point of view, but the row stays --
+        # on_delete=PROTECT on Payment/RevenueDistribution/WatchEvent and the
+        # explicit Enrollment check in delete_course() mean a course with any
+        # money or watch-time history can never be hard-deleted.
+        ARCHIVED = 'archived', 'Archived'
 
     instructor = models.ForeignKey(
         settings.AUTH_USER_MODEL,

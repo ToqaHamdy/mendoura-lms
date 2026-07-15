@@ -14,16 +14,23 @@
   <h2 class="text-xl font-bold mb-4">Modules</h2>
   <div class="space-y-3 mb-12">
     {% for module in modules %}
-      <a href="{% url 'manage_lectures' course.id module.id %}" class="flex items-center justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 hover:shadow-sm">
-        <div class="flex items-center gap-3">
+      <div class="flex items-center justify-between bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5 hover:shadow-sm flex-wrap gap-3">
+        <a href="{% url 'manage_lectures' course.id module.id %}" class="flex items-center gap-3">
           <span class="w-8 h-8 flex items-center justify-center rounded-full bg-brand-50 dark:bg-gray-800 text-brand-600 font-bold text-sm">{{ module.order }}</span>
           <div>
             <p class="font-semibold">{{ module.title }}</p>
             <p class="text-xs text-gray-400">{{ module.lectures.count }} lecture{{ module.lectures.count|pluralize }}</p>
           </div>
+        </a>
+        <div class="flex items-center gap-3">
+          <a href="{% url 'edit_module' course.id module.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Edit</a>
+          <form method="post" action="{% url 'delete_module' course.id module.id %}"
+                onsubmit="return confirm('Delete {{ module.title|escapejs }} and all its lectures?');">
+            {% csrf_token %}
+            <button type="submit" class="text-sm font-semibold text-red-600 hover:underline">Delete</button>
+          </form>
         </div>
-        <i class="fa-solid fa-chevron-right text-gray-300"></i>
-      </a>
+      </div>
     {% empty %}
       <div class="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center text-gray-400">
         No modules yet. Add your first one below.

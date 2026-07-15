@@ -15,7 +15,7 @@ from django.utils import timezone
 from . import paymob
 from .models import (
     Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
-    Payment, Payout, Plan, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
+    Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
     Track, User, WalletTransaction, WatchEvent,
 )
 from .money import calculate_split
@@ -264,6 +264,38 @@ class InstructorIsolationTests(TestCase):
         response = self.client.get(reverse('instructor_wallet'))
         self.assertNotContains(response, '42.00')
 
+    def test_cannot_edit_or_delete_anothers_course(self):
+        self.client.force_login(self.intruder)
+        self.assertEqual(
+            self.client.get(reverse('edit_course', args=[self.course.id])).status_code, 404)
+        self.assertEqual(
+            self.client.post(reverse('delete_course', args=[self.course.id])).status_code, 404)
+        self.course.refresh_from_db()
+        self.assertNotEqual(self.course.status, Course.Status.ARCHIVED)
+
+    def test_cannot_edit_or_delete_anothers_module(self):
+        self.client.force_login(self.intruder)
+        self.assertEqual(
+            self.client.get(reverse('edit_module', args=[self.course.id, self.module.id])).status_code, 404)
+        self.assertEqual(
+            self.client.post(reverse('delete_module', args=[self.course.id, self.module.id])).status_code, 404)
+        self.assertTrue(Module.objects.filter(id=self.module.id).exists())
+
+    def test_cannot_edit_or_delete_anothers_lecture(self):
+        lecture = Lecture.objects.create(module=self.module, title='L1')
+        self.client.force_login(self.intruder)
+        self.assertEqual(self.client.get(reverse('edit_lecture', args=[lecture.id])).status_code, 404)
+        self.assertEqual(self.client.post(reverse('delete_lecture', args=[lecture.id])).status_code, 404)
+        self.assertTrue(Lecture.objects.filter(id=lecture.id).exists())
+
+    def test_cannot_delete_anothers_resource(self):
+        lecture = Lecture.objects.create(module=self.module, title='L1')
+        resource = Resource.objects.create(lecture=lecture, title='Slides')
+        self.client.force_login(self.intruder)
+        response = self.client.post(reverse('delete_resource', args=[resource.id]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(Resource.objects.filter(id=resource.id).exists())
+
 
 class PayoutRequestTests(TestCase):
     def setUp(self):
@@ -346,6 +378,155 @@ class CourseCreationTrackScopeTests(TestCase):
         })
         self.assertFalse(Course.objects.filter(title='Broken Course').exists())
         self.assertEqual(response.status_code, 200)  # re-renders the form with errors
+
+
+class CourseVersioningTests(TestCase):
+    """Editing a published course must resubmit it for review without
+    breaking access for students who already paid for it."""
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='ver_inst', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='ver_stud', password='pw', is_student=True)
+        parent_track = Track.objects.create(name='Ver Parent Track')
+        track = Track.objects.create(name='Ver Track', parent=parent_track)
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Ver Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED,
+        )
+        self.module = Module.objects.create(course=self.course, title='M1')
+        self.lecture = Lecture.objects.create(module=self.module, title='L1', is_preview=False)
+        self.enrollment = Enrollment.objects.create(student=self.student, course=self.course)
+
+    def _edit(self):
+        return self.client.post(reverse('edit_course', args=[self.course.id]), {
+            'title': 'Ver Course Updated', 'description': 'updated', 'track': self.course.track_id,
+            'level': Course.Level.BEGINNER, 'language': 'English',
+            'production_type': Course.ProductionType.FULL, 'price': '0.00', 'is_free': 'on',
+        })
+
+    def test_editing_a_published_course_reenters_pending_review(self):
+        self.client.force_login(self.instructor)
+        self._edit()
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.PENDING_REVIEW)
+        self.assertEqual(self.course.title, 'Ver Course Updated')
+
+    def test_enrolled_student_keeps_access_while_edit_is_pending_review(self):
+        self.client.force_login(self.instructor)
+        self._edit()
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.PENDING_REVIEW)
+
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('course_player', args=[self.course.id, self.lecture.id]))
+        self.assertEqual(response.status_code, 200)
+
+        detail_response = self.client.get(reverse('course_detail', args=[self.course.id]))
+        self.assertEqual(detail_response.status_code, 200)
+
+    def test_stranger_cannot_reach_unpublished_course(self):
+        self.client.force_login(self.instructor)
+        self._edit()
+
+        stranger = User.objects.create_user(username='ver_stranger', password='pw', is_student=True)
+        self.client.force_login(stranger)
+        response = self.client.get(reverse('course_detail', args=[self.course.id]))
+        self.assertEqual(response.status_code, 404)
+
+        player_response = self.client.get(reverse('course_player', args=[self.course.id, self.lecture.id]))
+        self.assertEqual(player_response.status_code, 404)
+
+    def test_instructor_can_preview_own_unpublished_course(self):
+        self.client.force_login(self.instructor)
+        self._edit()
+        response = self.client.get(reverse('course_player', args=[self.course.id, self.lecture.id]))
+        self.assertEqual(response.status_code, 200)
+
+    def test_editing_a_draft_course_stays_draft(self):
+        self.course.status = Course.Status.DRAFT
+        self.course.save()
+        self.client.force_login(self.instructor)
+        self._edit()
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.DRAFT)
+
+    def test_editing_module_on_published_course_reenters_review(self):
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('edit_module', args=[self.course.id, self.module.id]),
+                          {'title': 'M1 renamed', 'order': 0})
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.PENDING_REVIEW)
+
+
+class CourseDeletionTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='del_inst', password='pw', is_instructor=True)
+        track = Track.objects.create(name='Del Track')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Del Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+        )
+
+    def test_course_with_no_history_is_hard_deleted(self):
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('delete_course', args=[self.course.id]))
+        self.assertFalse(Course.objects.filter(id=self.course.id).exists())
+
+    def test_course_with_enrollment_is_archived_not_deleted(self):
+        student = User.objects.create_user(username='del_stud', password='pw', is_student=True)
+        Enrollment.objects.create(student=student, course=self.course)
+
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('delete_course', args=[self.course.id]))
+
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.ARCHIVED)
+
+    def test_course_with_payment_history_is_archived_not_deleted(self):
+        student = User.objects.create_user(username='del_stud2', password='pw', is_student=True)
+        Payment.objects.create(student=student, course=self.course, total_amount=Decimal('10.00'))
+
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('delete_course', args=[self.course.id]))
+
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.ARCHIVED)
+        self.assertTrue(Course.objects.filter(id=self.course.id).exists())
+
+
+@override_settings(STORAGES={
+    # File uploads default to Cloudinary in production; swap in an in-memory
+    # backend here so this test doesn't attempt a real network call with
+    # empty credentials.
+    'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class ProfileAvatarTests(TestCase):
+    def test_profile_page_loads_and_shows_initials_without_avatar(self):
+        user = User.objects.create_user(username='avatarless', password='pw', is_student=True)
+        self.client.force_login(user)
+        response = self.client.get(reverse('profile'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'A')  # initials fallback
+
+    def test_uploading_an_avatar_updates_the_user(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        user = User.objects.create_user(username='avatar_upload', password='pw', is_student=True)
+        self.client.force_login(user)
+        tiny_gif = (
+            b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01'
+            b'\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;'
+        )
+        avatar_file = SimpleUploadedFile('avatar.gif', tiny_gif, content_type='image/gif')
+        self.client.post(reverse('profile'), {'avatar': avatar_file})
+
+        user.refresh_from_db()
+        self.assertTrue(bool(user.avatar))
 
 
 class MisfiledCourseDetectionTests(TestCase):

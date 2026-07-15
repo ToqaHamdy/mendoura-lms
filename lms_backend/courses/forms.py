@@ -277,3 +277,15 @@ class LectureForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
+
+
+# Profile Form (any authenticated user updates their own avatar)
+class ProfileForm(forms.ModelForm):
+    class Meta:
+        model = User
+        fields = ['avatar']
+        widgets = {
+            'avatar': forms.ClearableFileInput(attrs={
+                'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
+            }),
+        }
