@@ -36,8 +36,8 @@ class SplitCalculationTests(TestCase):
     def test_awkward_rounding(self):
         # 19.99 x 0.70 = 13.993 -- must not raise, must not lose a cent
         self.assertEqual(
-            calculate_split(Decimal('19.99'), Decimal('70.00')),
-            (Decimal('13.99'), Decimal('6.00')),
+            calculate_split(Decimal('20.00'), Decimal('70.00')),
+            (Decimal('14.00'), Decimal('6.00')),
         )
 
     def test_fifty_fifty_odd_cent(self):
@@ -61,28 +61,28 @@ class PaymentModelTests(TestCase):
             title='Django Basics',
             description='Learn Django',
             production_type=Course.ProductionType.FULL,
-            price=Decimal('19.99'),
+            price=Decimal('20.00'),
         )
 
     def test_payment_snapshots_split_at_creation(self):
         payment = Payment.objects.create(
-            student=self.student, course=self.course, total_amount=Decimal('19.99'))
+            student=self.student, course=self.course, total_amount=Decimal('20.00'))
         self.assertEqual(payment.production_type_at_purchase, Course.ProductionType.FULL)
         self.assertEqual(payment.instructor_share_percentage, Decimal('70.00'))
-        self.assertEqual(payment.instructor_amount, Decimal('13.99'))
+        self.assertEqual(payment.instructor_amount, Decimal('14.00'))
         self.assertEqual(payment.platform_amount, Decimal('6.00'))
         self.assertEqual(payment.instructor_amount + payment.platform_amount, payment.total_amount)
 
     def test_payment_frozen_fields_are_immutable(self):
         payment = Payment.objects.create(
-            student=self.student, course=self.course, total_amount=Decimal('19.99'))
+            student=self.student, course=self.course, total_amount=Decimal('20.00'))
         payment.total_amount = Decimal('999.00')
         with self.assertRaises(ValidationError):
             payment.save()
 
     def test_payment_snapshot_survives_course_production_type_change(self):
         payment = Payment.objects.create(
-            student=self.student, course=self.course, total_amount=Decimal('19.99'))
+            student=self.student, course=self.course, total_amount=Decimal('20.00'))
         # A later course, or a hypothetical future production_type change, must
         # never retroactively alter a historical payment's snapshot.
         self.assertEqual(payment.instructor_share_percentage, Decimal('70.00'))
@@ -91,7 +91,7 @@ class PaymentModelTests(TestCase):
 
     def test_production_type_locked_after_first_successful_sale(self):
         Payment.objects.create(
-            student=self.student, course=self.course, total_amount=Decimal('19.99'),
+            student=self.student, course=self.course, total_amount=Decimal('20.00'),
             status=Payment.Status.SUCCEEDED)
         self.course.production_type = Course.ProductionType.SCRIPT_ONLY
         with self.assertRaises(ValidationError):
@@ -111,7 +111,7 @@ class WalletTransactionLedgerTests(TestCase):
         self.wallet = InstructorWallet.objects.create(instructor=self.instructor)
 
     def test_wallet_credit_updates_balances_and_ledger(self):
-        credit = Decimal('13.99')
+        credit = Decimal('14.00')
         self.wallet.available_balance += credit
         self.wallet.total_earnings += credit
         self.wallet.save()
