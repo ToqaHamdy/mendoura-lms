@@ -713,13 +713,23 @@ def instructor_wallet(request):
         RevenueDistribution.objects.filter(instructor=request.user)
         .select_related('course', 'period')
     )
+
+    next_payout_available_at = None
+    last_request = payouts.order_by('-requested_at').first()
+    if last_request and timezone.now() - last_request.requested_at < PAYOUT_COOLDOWN:
+        next_payout_available_at = last_request.requested_at + PAYOUT_COOLDOWN
+
     return render(request, 'dashboard/wallet.html', {
         'wallet': wallet,
         'transactions': transactions,
         'payouts': payouts,
         'revenue_distributions': revenue_distributions,
         'form': PayoutRequestForm(),
+        'next_payout_available_at': next_payout_available_at,
     })
+
+
+PAYOUT_COOLDOWN = timedelta(days=7)
 
 
 # Request a payout from available balance. The requested amount is reserved
@@ -732,6 +742,15 @@ def request_payout(request):
     wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
 
     if request.method == 'POST':
+        last_request = wallet.payouts.order_by('-requested_at').first()
+        if last_request and timezone.now() - last_request.requested_at < PAYOUT_COOLDOWN:
+            next_available = last_request.requested_at + PAYOUT_COOLDOWN
+            messages.error(
+                request,
+                f'You can request a payout once a week. Next available: '
+                f'{next_available.strftime("%b %d, %Y")}.')
+            return redirect('instructor_wallet')
+
         form = PayoutRequestForm(request.POST)
         if form.is_valid():
             with transaction.atomic():

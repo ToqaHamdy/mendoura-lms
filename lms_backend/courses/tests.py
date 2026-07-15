@@ -293,6 +293,60 @@ class PayoutRequestTests(TestCase):
         self.client.post(reverse('request_payout'), {'amount': '20.00', 'method': 'bank'})
         self.assertEqual(Payout.objects.filter(wallet=self.wallet).count(), 1)
 
+    def test_second_request_within_a_week_is_blocked_even_with_balance(self):
+        self.wallet.available_balance = Decimal('100.00')
+        self.wallet.save()
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('request_payout'), {'amount': '10.00', 'method': 'bank'})
+        self.assertEqual(Payout.objects.filter(wallet=self.wallet).count(), 1)
+
+        # Balance is there, but the weekly cooldown should still block a
+        # second request the same day.
+        self.client.post(reverse('request_payout'), {'amount': '10.00', 'method': 'bank'})
+        self.assertEqual(Payout.objects.filter(wallet=self.wallet).count(), 1)
+
+    def test_request_allowed_again_after_a_week(self):
+        self.wallet.available_balance = Decimal('100.00')
+        self.wallet.save()
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('request_payout'), {'amount': '10.00', 'method': 'bank'})
+
+        old_payout = Payout.objects.get(wallet=self.wallet)
+        old_payout.requested_at = timezone.now() - timedelta(days=8)
+        old_payout.save()
+
+        self.client.post(reverse('request_payout'), {'amount': '10.00', 'method': 'bank'})
+        self.assertEqual(Payout.objects.filter(wallet=self.wallet).count(), 2)
+
+
+class CourseCreationTrackScopeTests(TestCase):
+    """A course must only ever be filed under a leaf track -- a parent
+    category like 'Tech' has no course list of its own, so a course
+    assigned to one would silently never appear on any student browse page."""
+
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='track_scope_inst', password='pw', is_instructor=True)
+        self.parent = Track.objects.create(name='Tech')
+        self.child = Track.objects.create(name='Web Development', parent=self.parent)
+
+    def test_create_course_form_only_offers_leaf_tracks(self):
+        from .forms import CourseCreationForm
+        form = CourseCreationForm()
+        track_ids = set(form.fields['track'].queryset.values_list('id', flat=True))
+        self.assertIn(self.child.id, track_ids)
+        self.assertNotIn(self.parent.id, track_ids)
+
+    def test_posting_a_parent_track_is_rejected(self):
+        self.client.force_login(self.instructor)
+        response = self.client.post(reverse('create_course'), {
+            'title': 'Broken Course', 'description': 'x', 'track': self.parent.id,
+            'level': Course.Level.BEGINNER, 'language': 'English',
+            'production_type': Course.ProductionType.FULL, 'price': '0.00',
+        })
+        self.assertFalse(Course.objects.filter(title='Broken Course').exists())
+        self.assertEqual(response.status_code, 200)  # re-renders the form with errors
+
 
 class MisfiledCourseDetectionTests(TestCase):
     """The admin dashboard must surface any course that can never appear on
@@ -440,7 +494,8 @@ class TrackCategoryCrudTests(TestCase):
         self.assertFalse(track.is_active)
 
     def test_admin_can_create_and_delete_category(self):
-        track = Track.objects.create(name='Data Science & AI')
+        parent = Track.objects.create(name='Tech Category')
+        track = Track.objects.create(name='Data Science & AI', parent=parent)
         self.client.force_login(self.admin)
         self.client.post(reverse('admin_categories'), {'track': track.id, 'name': 'Machine Learning'})
         category = Category.objects.get(name='Machine Learning')

@@ -98,10 +98,24 @@ COURSE_FORM_INPUT_CLASSES = (
 )
 
 
+COURSE_LANGUAGE_CHOICES = [
+    ('English', 'English'),
+    ('Arabic', 'Arabic'),
+    ('French', 'French'),
+    ('German', 'German'),
+    ('Spanish', 'Spanish'),
+    ('Italian', 'Italian'),
+    ('Turkish', 'Turkish'),
+]
+
+
 class CourseCreationForm(forms.ModelForm):
+    language = forms.ChoiceField(choices=COURSE_LANGUAGE_CHOICES, initial='English',
+                                  widget=forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}))
+
     class Meta:
         model = Course
-        fields = ['title', 'description', 'track', 'category', 'level', 'production_type',
+        fields = ['title', 'description', 'track', 'category', 'level', 'language', 'production_type',
                   'price', 'is_free', 'thumbnail', 'ai_script']
         widgets = {
             'title': forms.TextInput(attrs={
@@ -132,7 +146,10 @@ class CourseCreationForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['track'].queryset = Track.objects.filter(is_active=True)
+        # Only leaf tracks take courses -- a parent category (e.g. "Tech")
+        # has no course list of its own, so a course filed under one would
+        # never surface on any student-facing browse page.
+        self.fields['track'].queryset = Track.objects.filter(is_active=True, parent__isnull=False)
         self.fields['category'].queryset = Category.objects.all()
         self.fields['category'].required = False
 
@@ -202,6 +219,10 @@ class CategoryForm(forms.ModelForm):
             'track': forms.Select(attrs={'class': INPUT_CLASSES}),
             'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'e.g. Frontend'}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['track'].queryset = Track.objects.filter(parent__isnull=False)
 
 
 # Module Form (Instructor organizes course into sections)
