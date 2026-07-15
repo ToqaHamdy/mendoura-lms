@@ -1248,3 +1248,132 @@ class HealthCheckTests(TestCase):
     def test_healthz_returns_200_without_authentication(self):
         response = self.client.get('/healthz/')
         self.assertEqual(response.status_code, 200)
+
+
+@override_settings(BUNNY_LIBRARY_ID='705216', BUNNY_API_KEY='test-api-key', BUNNY_TOKEN_KEY='')
+class BunnyHelperTests(TestCase):
+    def test_upload_credentials_signature_matches_bunny_scheme(self):
+        from courses import bunny
+        creds = bunny.upload_credentials('vid-123')
+        expected = hashlib.sha256(
+            f"705216test-api-key{creds['expiration']}vid-123".encode()).hexdigest()
+        self.assertEqual(creds['signature'], expected)
+        self.assertEqual(creds['video_id'], 'vid-123')
+        self.assertEqual(creds['library_id'], '705216')
+        # The raw API key must never be handed to the browser.
+        self.assertNotIn('test-api-key', str(creds))
+
+    def test_embed_url_is_plain_without_token_key(self):
+        from courses import bunny
+        self.assertEqual(
+            bunny.embed_url('vid-123'),
+            'https://iframe.mediadelivery.net/embed/705216/vid-123')
+
+    @override_settings(BUNNY_TOKEN_KEY='secret-token-key')
+    def test_embed_url_is_signed_when_token_key_present(self):
+        from courses import bunny
+        url = bunny.embed_url('vid-123')
+        self.assertIn('token=', url)
+        self.assertIn('expires=', url)
+        self.assertNotIn('secret-token-key', url)  # the key is hashed, never exposed
+
+
+@override_settings(BUNNY_LIBRARY_ID='705216', BUNNY_API_KEY='test-api-key')
+class BunnyUploadEndpointTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='bunny_inst', password='pw', is_instructor=True)
+        self.intruder = User.objects.create_user(
+            username='bunny_intruder', password='pw', is_instructor=True)
+        parent = Track.objects.create(name='Bunny Parent')
+        track = Track.objects.create(name='Bunny Track', parent=parent)
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Bunny Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED)
+        self.module = Module.objects.create(course=self.course, title='M1')
+        self.lecture = Lecture.objects.create(module=self.module, title='L1')
+
+    @patch('courses.bunny.create_video', return_value='new-guid-123')
+    def test_create_video_stores_guid_and_returns_credentials(self, mock_create):
+        self.client.force_login(self.instructor)
+        response = self.client.post(reverse('create_bunny_video', args=[self.lecture.id]))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data['video_id'], 'new-guid-123')
+        self.assertIn('signature', data)
+        self.lecture.refresh_from_db()
+        self.assertEqual(self.lecture.bunny_video_id, 'new-guid-123')
+
+    @patch('courses.bunny.create_video', return_value='new-guid-123')
+    def test_create_video_on_published_course_reenters_review(self, mock_create):
+        self.client.force_login(self.instructor)
+        self.client.post(reverse('create_bunny_video', args=[self.lecture.id]))
+        self.course.refresh_from_db()
+        self.assertEqual(self.course.status, Course.Status.PENDING_REVIEW)
+
+    @patch('courses.bunny.create_video')
+    def test_non_owner_cannot_create_video_for_anothers_lecture(self, mock_create):
+        self.client.force_login(self.intruder)
+        response = self.client.post(reverse('create_bunny_video', args=[self.lecture.id]))
+        self.assertEqual(response.status_code, 404)
+        mock_create.assert_not_called()  # the Bunny API is never even reached
+
+    @override_settings(BUNNY_LIBRARY_ID='', BUNNY_API_KEY='')
+    def test_returns_503_when_bunny_not_configured(self):
+        self.client.force_login(self.instructor)
+        response = self.client.post(reverse('create_bunny_video', args=[self.lecture.id]))
+        self.assertEqual(response.status_code, 503)
+
+
+class BunnyWebhookTests(TestCase):
+    def setUp(self):
+        inst = User.objects.create_user(username='bw_inst', password='pw', is_instructor=True)
+        track = Track.objects.create(name='BW Track')
+        course = Course.objects.create(
+            instructor=inst, track=track, title='BW Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True)
+        module = Module.objects.create(course=course, title='M1')
+        self.lecture = Lecture.objects.create(
+            module=module, title='L1', bunny_video_id='guid-xyz', bunny_status=0)
+
+    def test_webhook_updates_status_by_guid(self):
+        response = self.client.post(
+            reverse('bunny_webhook'),
+            data=json.dumps({'VideoGuid': 'guid-xyz', 'Status': 4}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.lecture.refresh_from_db()
+        self.assertEqual(self.lecture.bunny_status, 4)
+        self.assertTrue(self.lecture.bunny_ready)
+
+    def test_webhook_ignores_unknown_guid(self):
+        response = self.client.post(
+            reverse('bunny_webhook'),
+            data=json.dumps({'VideoGuid': 'nonexistent', 'Status': 4}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.lecture.refresh_from_db()
+        self.assertEqual(self.lecture.bunny_status, 0)
+
+
+@override_settings(BUNNY_LIBRARY_ID='705216', BUNNY_API_KEY='k', BUNNY_TOKEN_KEY='tok')
+class BunnyPlayerEmbedTests(TestCase):
+    def test_player_embeds_signed_bunny_iframe(self):
+        inst = User.objects.create_user(username='bp_inst', password='pw', is_instructor=True)
+        student = User.objects.create_user(username='bp_stud', password='pw', is_student=True)
+        track = Track.objects.create(name='BP Track')
+        course = Course.objects.create(
+            instructor=inst, track=track, title='BP Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED)
+        module = Module.objects.create(course=course, title='M1')
+        lecture = Lecture.objects.create(
+            module=module, title='L1', bunny_video_id='guid-abc', bunny_status=4, is_preview=True)
+        Enrollment.objects.create(student=student, course=course)
+
+        self.client.force_login(student)
+        response = self.client.get(reverse('course_player', args=[course.id, lecture.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'iframe.mediadelivery.net/embed/705216/guid-abc')
+        self.assertContains(response, 'token=')

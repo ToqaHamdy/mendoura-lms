@@ -34,11 +34,18 @@
           </div>
         </div>
         <div class="flex flex-wrap gap-3 mt-3 text-sm items-center">
-          {% if lecture.video_url %}
-            <a href="{{ lecture.video_url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-link"></i> Video Link</a>
-          {% endif %}
-          {% if lecture.video_file %}
+          {% if lecture.bunny_video_id %}
+            {% if lecture.bunny_ready %}
+              <span class="text-green-600 font-semibold"><i class="fa-solid fa-circle-check"></i> Video ready</span>
+            {% else %}
+              <span class="text-yellow-600 font-semibold"><i class="fa-solid fa-spinner fa-spin"></i> Processing</span>
+            {% endif %}
+          {% elif lecture.video_url %}
+            <a href="{{ lecture.video_url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-link"></i> External Video</a>
+          {% elif lecture.video_file %}
             <a href="{{ lecture.video_file.url }}" target="_blank" class="text-brand-600 hover:underline"><i class="fa-solid fa-video"></i> Video File</a>
+          {% else %}
+            <a href="{% url 'edit_lecture' lecture.id %}" class="text-gray-400 hover:text-brand-600"><i class="fa-solid fa-cloud-arrow-up"></i> Add video</a>
           {% endif %}
           {% for resource in lecture.resources.all %}
             <span class="inline-flex items-center gap-1">
@@ -83,13 +90,11 @@
     </div>
 
     <div class="border-t border-gray-200 dark:border-gray-800 pt-5">
-      <label class="block text-sm font-semibold mb-2">Video URL <span class="text-gray-400 font-normal">(YouTube, Vimeo, etc.)</span></label>
+      <label class="block text-sm font-semibold mb-2">External Video URL <span class="text-gray-400 font-normal">(optional)</span></label>
       {{ form.video_url }}
-    </div>
-
-    <div>
-      <label class="block text-sm font-semibold mb-2">Or Upload Video File</label>
-      {{ form.video_file }}
+      <p class="text-xs text-gray-400 mt-2">
+        <i class="fa-solid fa-circle-info"></i> To upload a video to Bunny Stream, save the lecture first, then click "Edit" on it.
+      </p>
     </div>
 
     <div class="flex items-center gap-2">

@@ -198,6 +198,15 @@ class Lecture(models.Model):
     module = models.ForeignKey(Module, on_delete=models.CASCADE, related_name='lectures', null=True)
     title = models.CharField(max_length=255)
     content_type = models.CharField(max_length=20, choices=ContentType.choices, default=ContentType.VIDEO)
+    # Bunny Stream video GUID. When set, the player embeds Bunny's token-signed
+    # iframe instead of the legacy video_url/video_file. Those two stay for
+    # backward compatibility with any lecture created before the Bunny switch.
+    bunny_video_id = models.CharField(max_length=64, blank=True, default='')
+    # Bunny encoding status, updated by its webhook: 0 created, 1 uploaded,
+    # 2 processing, 3 transcoding, 4 finished, 5 error, 6 upload-failed.
+    # The embed player copes with any state on its own; this just lets the
+    # instructor see when a freshly uploaded video is actually ready.
+    bunny_status = models.PositiveSmallIntegerField(default=0)
     video_url = models.URLField(blank=True, null=True)
     video_file = models.FileField(upload_to='lecture_videos/', blank=True, null=True)
     duration_seconds = models.PositiveIntegerField(default=0)
@@ -215,6 +224,12 @@ class Lecture(models.Model):
     @property
     def course(self):
         return self.module.course
+
+    @property
+    def bunny_ready(self):
+        # 4 == "finished" in Bunny's status enum. Anything below means the
+        # video is still being uploaded/transcoded and isn't watchable yet.
+        return bool(self.bunny_video_id) and self.bunny_status >= 4
 
 
 class Resource(models.Model):

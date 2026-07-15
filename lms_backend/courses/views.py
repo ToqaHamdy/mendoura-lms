@@ -15,12 +15,12 @@ from django.core.management import call_command
 from django.db import IntegrityError, transaction
 from django.db.models import Avg, Count, Prefetch, ProtectedError, Q, Sum
 from django.db.models.functions import TruncMonth
-from django.http import Http404, HttpResponse, HttpResponseForbidden
+from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
-from . import paymob
+from . import bunny, paymob
 from .access import get_or_create_enrollment, student_has_access
 from .forms import (
     CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
@@ -260,6 +260,27 @@ def checkout_course(request, course_id):
     return render(request, 'courses/checkout.html', {'course': course, 'plans': plans})
 
 
+# Bunny Stream encoding webhook -- flips a lecture's bunny_status as the video
+# moves through Bunny's pipeline (uploaded -> transcoding -> finished). Only
+# ever updates a status int matched by GUID, so an unauthenticated caller can
+# do nothing worse than nudge a status; no money or access decision rests on
+# it. Bunny payload: {"VideoLibraryId": ..., "VideoGuid": "...", "Status": 4}.
+@csrf_exempt
+def bunny_webhook(request):
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+    try:
+        payload = json.loads(request.body)
+        guid = payload.get('VideoGuid', '')
+        status = int(payload.get('Status', 0))
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return HttpResponse(status=400)
+
+    if guid:
+        Lecture.objects.filter(bunny_video_id=guid).update(bunny_status=status)
+    return HttpResponse(status=200)
+
+
 # Paymob webhook -- this is what actually creates the Payment + Enrollment +
 # wallet credit. Idempotent: the unique constraint on provider_transaction_id
 # means a retried webhook can't double-credit a wallet.
@@ -470,9 +491,14 @@ def course_player(request, course_id, lecture_id):
             LectureProgress.objects.filter(enrollment=enrollment, completed=True)
             .values_list('lecture_id', flat=True))
 
+    # Signed here (not in the template) because the token is time-limited and
+    # uses the secret key -- a fresh, expiring URL is minted on every load.
+    bunny_embed_url = bunny.embed_url(lecture.bunny_video_id) if lecture.bunny_video_id else None
+
     return render(request, 'courses/player.html', {
         'course': course,
         'lecture': lecture,
+        'bunny_embed_url': bunny_embed_url,
         'modules': modules,
         'enrollment': enrollment,
         'progress': progress,
@@ -829,6 +855,7 @@ def edit_lecture(request, lecture_id):
         form = LectureForm(instance=lecture)
     return render(request, 'dashboard/edit_lecture.html', {
         'course': course, 'module': lecture.module, 'lecture': lecture, 'form': form,
+        'bunny_configured': bunny.is_configured(),
     })
 
 
@@ -845,6 +872,35 @@ def delete_lecture(request, lecture_id):
             messages.error(
                 request, f'"{lecture.title}" has watch-time history and cannot be deleted.')
     return redirect('manage_lectures', course_id=course_id, module_id=module_id)
+
+
+# Creates the Bunny video record for a lecture and hands the browser a
+# short-lived, single-video signature to upload straight to Bunny. The raw
+# Bunny API key never leaves the server. Ownership-checked like every other
+# instructor content action.
+@login_required
+def create_bunny_video(request, lecture_id):
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course__instructor=request.user)
+
+    if not bunny.is_configured():
+        return JsonResponse({'error': 'Video hosting is not configured.'}, status=503)
+
+    try:
+        video_id = bunny.create_video(f'{lecture.course.title} - {lecture.title}')
+    except (bunny.BunnyError, requests.RequestException):
+        return JsonResponse({'error': 'Could not start the upload. Please try again.'}, status=502)
+
+    # Replacing an existing video: point the lecture at the new GUID. The old
+    # Bunny video is orphaned rather than deleted -- harmless, and avoids a
+    # second API call in the request path.
+    lecture.bunny_video_id = video_id
+    lecture.bunny_status = 0
+    lecture.save(update_fields=['bunny_video_id', 'bunny_status'])
+
+    _reenter_review_if_published(request, lecture.module.course)
+    return JsonResponse(bunny.upload_credentials(video_id))
 
 
 # Attach a downloadable Resource to a lecture
