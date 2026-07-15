@@ -85,25 +85,6 @@ class TrackRoadmapStep(models.Model):
         return self.course.title if self.course else self.title
 
 
-class Category(models.Model):
-    track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name='categories')
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=120, blank=True)
-
-    class Meta:
-        ordering = ['name']
-        unique_together = ('track', 'name')
-        verbose_name_plural = 'Categories'
-
-    def __str__(self):
-        return f'{self.track.name} / {self.name}'
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
-
 class Course(models.Model):
     class Level(models.TextChoices):
         BEGINNER = 'beginner', 'Beginner'
@@ -128,8 +109,6 @@ class Course(models.Model):
     )
     # null=True: no Track exists to default to; required at the form layer instead.
     track = models.ForeignKey(Track, on_delete=models.PROTECT, related_name='courses', null=True)
-    category = models.ForeignKey(Category, on_delete=models.SET_NULL, related_name='courses',
-                                  null=True, blank=True)
 
     title = models.CharField(max_length=255)
     slug = models.SlugField(max_length=280, unique=True, blank=True, default='')

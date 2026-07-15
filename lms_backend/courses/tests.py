@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from . import paymob
 from .models import (
-    Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
+    Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Plan, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
     Track, User, WalletTransaction, WatchEvent,
 )
@@ -395,14 +395,14 @@ class AdminGuardTests(TestCase):
     def test_instructor_cannot_reach_admin_pages(self):
         self.client.force_login(self.instructor)
         for name in ('course_approval_queue', 'admin_users', 'admin_payments',
-                     'admin_payouts', 'admin_tracks', 'admin_categories'):
+                     'admin_payouts', 'admin_tracks'):
             response = self.client.get(reverse(name))
             self.assertNotEqual(response.status_code, 200, f'{name} was reachable by a non-admin')
 
     def test_admin_can_reach_admin_pages(self):
         self.client.force_login(self.admin)
         for name in ('admin_dashboard', 'course_approval_queue', 'admin_users', 'admin_payments',
-                     'admin_payouts', 'admin_tracks', 'admin_categories'):
+                     'admin_payouts', 'admin_tracks'):
             response = self.client.get(reverse(name))
             self.assertEqual(response.status_code, 200, f'{name} was not reachable by an admin')
 
@@ -508,7 +508,7 @@ class AdminPayoutLifecycleTests(TestCase):
         self.assertEqual(self.wallet.available_balance, Decimal('30.00'))
 
 
-class TrackCategoryCrudTests(TestCase):
+class TrackCrudTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username='crud_admin', password='pw')
 
@@ -521,16 +521,6 @@ class TrackCategoryCrudTests(TestCase):
         self.client.post(reverse('toggle_track_active', args=[track.id]))
         track.refresh_from_db()
         self.assertFalse(track.is_active)
-
-    def test_admin_can_create_and_delete_category(self):
-        parent = Track.objects.create(name='Tech Category')
-        track = Track.objects.create(name='Data Science & AI', parent=parent)
-        self.client.force_login(self.admin)
-        self.client.post(reverse('admin_categories'), {'track': track.id, 'name': 'Machine Learning'})
-        category = Category.objects.get(name='Machine Learning')
-
-        self.client.post(reverse('delete_category', args=[category.id]))
-        self.assertFalse(Category.objects.filter(id=category.id).exists())
 
 
 TEST_HMAC_SECRET = 'test-hmac-secret'
@@ -1071,3 +1061,9 @@ class SeedAdminCommandTests(TestCase):
             call_command('seed_admin')
 
         self.assertEqual(User.objects.filter(username='siteadmin2').count(), 1)
+
+
+class HealthCheckTests(TestCase):
+    def test_healthz_returns_200_without_authentication(self):
+        response = self.client.get('/healthz/')
+        self.assertEqual(response.status_code, 200)

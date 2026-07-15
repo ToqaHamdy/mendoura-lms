@@ -1,7 +1,7 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
 from .models import (
-    User, Course, InstructorWallet, Lecture, Module, Resource, Submission, Track, Category,
+    User, Course, InstructorWallet, Lecture, Module, Resource, Submission, Track,
     Review, Payout,
 )
 
@@ -115,7 +115,7 @@ class CourseCreationForm(forms.ModelForm):
 
     class Meta:
         model = Course
-        fields = ['title', 'description', 'track', 'category', 'level', 'language', 'production_type',
+        fields = ['title', 'description', 'track', 'level', 'language', 'production_type',
                   'price', 'is_free', 'thumbnail', 'ai_script']
         widgets = {
             'title': forms.TextInput(attrs={
@@ -127,7 +127,6 @@ class CourseCreationForm(forms.ModelForm):
                 'class': COURSE_FORM_INPUT_CLASSES,
             }),
             'track': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
-            'category': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
             'level': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
             'production_type': forms.RadioSelect(),
             'price': forms.NumberInput(attrs={
@@ -150,8 +149,6 @@ class CourseCreationForm(forms.ModelForm):
         # has no course list of its own, so a course filed under one would
         # never surface on any student-facing browse page.
         self.fields['track'].queryset = Track.objects.filter(is_active=True, parent__isnull=False)
-        self.fields['category'].queryset = Category.objects.all()
-        self.fields['category'].required = False
 
 
 # Review Form (enrolled students only, enforced in the view)
@@ -208,21 +205,6 @@ class TrackForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields['parent'].queryset = Track.objects.filter(parent__isnull=True)
         self.fields['parent'].required = False
-
-
-# Category Form (Admin CRUD)
-class CategoryForm(forms.ModelForm):
-    class Meta:
-        model = Category
-        fields = ['track', 'name']
-        widgets = {
-            'track': forms.Select(attrs={'class': INPUT_CLASSES}),
-            'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'e.g. Frontend'}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields['track'].queryset = Track.objects.filter(parent__isnull=False)
 
 
 # Module Form (Instructor organizes course into sections)

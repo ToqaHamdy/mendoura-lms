@@ -31,8 +31,6 @@ urlpatterns = [
     path('dashboard/admin/payouts/<int:payout_id>/paid/', views.mark_payout_paid, name='mark_payout_paid'),
     path('dashboard/admin/tracks/', views.admin_tracks, name='admin_tracks'),
     path('dashboard/admin/tracks/<int:track_id>/toggle/', views.toggle_track_active, name='toggle_track_active'),
-    path('dashboard/admin/categories/', views.admin_categories, name='admin_categories'),
-    path('dashboard/admin/categories/<int:category_id>/delete/', views.delete_category, name='delete_category'),
 
     # Instructor interface
     path('course/<int:course_id>/modules/', views.manage_modules, name='manage_modules'),

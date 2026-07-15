@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from .models import (
-    User, Track, TrackRoadmapStep, Category, Course, Module, Lecture, Resource, Submission,
+    User, Track, TrackRoadmapStep, Course, Module, Lecture, Resource, Submission,
     Payment, Enrollment, LectureProgress, InstructorWallet, WalletTransaction,
     Payout, Plan, Subscription, SubscriptionPeriod, RevenueDistribution, WatchEvent,
     Review, Certificate,
@@ -31,16 +31,9 @@ class TrackAdmin(admin.ModelAdmin):
     inlines = [TrackRoadmapStepInline]
 
 
-@admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    list_display = ('name', 'track')
-    list_filter = ('track',)
-    prepopulated_fields = {'slug': ('name',)}
-
-
 @admin.register(Course)
 class CourseAdmin(admin.ModelAdmin):
-    list_display = ('title', 'instructor', 'track', 'category', 'level', 'production_type',
+    list_display = ('title', 'instructor', 'track', 'level', 'production_type',
                      'price', 'status', 'created_at')
     list_filter = ('status', 'production_type', 'level', 'track')
     search_fields = ('title', 'instructor__username')
