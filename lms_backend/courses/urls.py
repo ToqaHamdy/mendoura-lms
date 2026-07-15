@@ -43,6 +43,7 @@ urlpatterns = [
          name='manage_lectures'),
     path('lectures/<int:lecture_id>/edit/', views.edit_lecture, name='edit_lecture'),
     path('lectures/<int:lecture_id>/delete/', views.delete_lecture, name='delete_lecture'),
+    path('lectures/<int:lecture_id>/create-video/', views.create_bunny_video, name='create_bunny_video'),
     path('lectures/<int:lecture_id>/resources/', views.add_resource, name='add_resource'),
     path('resources/<int:resource_id>/delete/', views.delete_resource, name='delete_resource'),
     path('course/<int:course_id>/students/', views.course_students, name='course_students'),

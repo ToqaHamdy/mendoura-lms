@@ -206,6 +206,21 @@ PAYMOB_INTEGRATION_ID_CARD = config('PAYMOB_INTEGRATION_ID_CARD', default='', ca
 PAYMOB_IFRAME_ID = config('PAYMOB_IFRAME_ID', default='')
 PAYMOB_HMAC_SECRET = config('PAYMOB_HMAC_SECRET', default='')
 
+# Bunny Stream (video hosting/CDN). Videos upload directly from the
+# instructor's browser to Bunny via a short-lived signed upload -- the API
+# key never leaves the server. Playback uses token-signed embed URLs so a
+# leaked link expires and can't be reshared.
+#   BUNNY_API_KEY    -- the Stream library's API key (creates videos, signs uploads)
+#   BUNNY_TOKEN_KEY  -- the Stream library's Token Authentication Key (signs
+#                       embed URLs); leave blank to fall back to referrer-only
+#                       security until it's provided.
+BUNNY_LIBRARY_ID = config('BUNNY_LIBRARY_ID', default='')
+BUNNY_API_KEY = config('BUNNY_API_KEY', default='')
+BUNNY_TOKEN_KEY = config('BUNNY_TOKEN_KEY', default='')
+# How long a signed embed URL stays valid (seconds). Long enough to watch a
+# lecture without the token expiring mid-video.
+BUNNY_EMBED_TOKEN_TTL = 60 * 60 * 6  # 6 hours
+
 # Without this, Django's default logging config sends 500 errors to
 # mail_admins (which does nothing since ADMINS isn't set) and prints nothing
 # to the console -- so a production 500 leaves no trace anywhere. This makes

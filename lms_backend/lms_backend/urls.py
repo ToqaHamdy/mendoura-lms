@@ -17,6 +17,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('healthz/', healthz, name='healthz'),
     path('webhooks/paymob/', courses_views.paymob_webhook, name='paymob_webhook'),
+    path('webhooks/bunny/', courses_views.bunny_webhook, name='bunny_webhook'),
     path('i18n/', include('django.conf.urls.i18n')),  # provides the 'set_language' POST endpoint
     path('', include('courses.urls')),
 ]

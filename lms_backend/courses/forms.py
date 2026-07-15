@@ -258,20 +258,20 @@ class PayoutRequestForm(forms.ModelForm):
 
 # 4. Lecture Form (Instructor uploads video/materials)
 class LectureForm(forms.ModelForm):
+    # video_file (direct upload) is intentionally gone -- videos now upload to
+    # Bunny Stream straight from the browser (see edit_lecture). video_url
+    # stays for the occasional externally-hosted embed.
     class Meta:
         model = Lecture
-        fields = ['title', 'video_url', 'video_file', 'is_preview', 'order']
+        fields = ['title', 'video_url', 'is_preview', 'order']
         widgets = {
             'title': forms.TextInput(attrs={
                 'placeholder': 'e.g. Introduction to Variables',
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'video_url': forms.URLInput(attrs={
-                'placeholder': 'https://youtube.com/... (optional if uploading a file)',
+                'placeholder': 'https://youtube.com/... (external embed, optional)',
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
-            }),
-            'video_file': forms.ClearableFileInput(attrs={
-                'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
             }),
             'order': forms.NumberInput(attrs={
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
