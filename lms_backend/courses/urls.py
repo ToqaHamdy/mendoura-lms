@@ -16,6 +16,8 @@ urlpatterns = [
     path('dashboard/admin/', views.admin_dashboard, name='admin_dashboard'),
     path('dashboard/admin/run-subscription-distribution/', views.run_subscription_distribution,
          name='run_subscription_distribution'),
+    path('dashboard/admin/subscription-revenue/', views.admin_subscription_revenue,
+         name='admin_subscription_revenue'),
 
     # Admin interface
     path('dashboard/admin/courses/', views.course_approval_queue, name='course_approval_queue'),

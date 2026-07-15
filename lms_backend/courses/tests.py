@@ -443,6 +443,35 @@ class CourseApprovalTests(TestCase):
         self.course.refresh_from_db()
         self.assertEqual(self.course.status, Course.Status.PENDING_REVIEW)
 
+    def test_rejecting_one_course_does_not_touch_others(self):
+        # Regression test: rejecting a single course must never affect any
+        # other course -- not its status, and definitely not deleting it.
+        track = Track.objects.create(name='Reject Isolation Track')
+        course_b = Course.objects.create(
+            instructor=self.instructor, track=track, title='Course B', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PENDING_REVIEW,
+        )
+        course_c = Course.objects.create(
+            instructor=self.instructor, track=track, title='Course C', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PENDING_REVIEW,
+        )
+
+        self.client.force_login(self.admin)
+        response = self.client.post(
+            reverse('reject_course', args=[self.course.id]), {'reason': 'Not good enough'})
+        self.assertEqual(response.status_code, 302)
+
+        self.course.refresh_from_db()
+        course_b.refresh_from_db()
+        course_c.refresh_from_db()
+
+        self.assertEqual(self.course.status, Course.Status.REJECTED)
+        self.assertEqual(course_b.status, Course.Status.PENDING_REVIEW)
+        self.assertEqual(course_c.status, Course.Status.PENDING_REVIEW)
+        self.assertEqual(Course.objects.count(), 3)  # nothing deleted
+
 
 class AdminPayoutLifecycleTests(TestCase):
     def setUp(self):
@@ -863,6 +892,20 @@ class SubscriptionRevenueDistributionTests(TestCase):
         self.assertEqual(total_attributed, Decimal('2000.00'))
         for dist in distributions:
             self.assertEqual(dist.instructor_amount + dist.platform_amount, dist.attributed_amount)
+
+    def test_admin_subscription_revenue_page_renders_a_known_distribution(self):
+        self._watch(self.lecture_a, self.course_a, 1800)
+        self._watch(self.lecture_b, self.course_b, 600)
+        call_command('distribute_subscription_revenue')
+
+        admin = User.objects.create_superuser(username='rev_page_admin', password='pw')
+        self.client.force_login(admin)
+        response = self.client.get(reverse('admin_subscription_revenue'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.course_a.title)
+        self.assertContains(response, self.instructor_a.username)
+        self.assertContains(response, '900.00')  # instructor_a's share
 
     def test_direct_sale_split_unaffected_by_subscription_path(self):
         self._watch(self.lecture_a, self.course_a, 1800)
