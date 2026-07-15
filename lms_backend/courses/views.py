@@ -827,7 +827,25 @@ def run_subscription_distribution(request):
     if request.method == 'POST':
         call_command('distribute_subscription_revenue')
         messages.success(request, 'Subscription revenue distribution ran successfully.')
-    return redirect('admin_dashboard')
+    return redirect('admin_subscription_revenue')
+
+
+# Per-period breakdown: the pool, watch-time by course, each instructor's
+# share, and the platform cut. This is the actual detail page -- the
+# dashboard card only shows a count and a button to run the job.
+@admin_required
+def admin_subscription_revenue(request):
+    periods = (
+        SubscriptionPeriod.objects.select_related('subscription__student', 'subscription__plan')
+        .prefetch_related('distributions__course', 'distributions__instructor')
+        .order_by('-period_start')[:50]
+    )
+    due_count = SubscriptionPeriod.objects.filter(
+        status=SubscriptionPeriod.Status.OPEN, period_end__lte=timezone.now()).count()
+    return render(request, 'dashboard/admin_subscription_revenue.html', {
+        'periods': periods,
+        'due_subscription_periods_count': due_count,
+    })
 
 
 # Course approval queue -- admin approves or rejects, instructors cannot self-publish
