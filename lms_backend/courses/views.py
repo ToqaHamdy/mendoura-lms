@@ -23,11 +23,11 @@ from django.views.decorators.csrf import csrf_exempt
 from . import paymob
 from .access import get_or_create_enrollment, student_has_access
 from .forms import (
-    CategoryForm, CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
+    CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
     PayoutRequestForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
 )
 from .models import (
-    Category, Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
+    Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
     Module, Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription,
     SubscriptionPeriod, Track, TrackRoadmapStep, User, WalletTransaction, WatchEvent,
 )
@@ -950,7 +950,7 @@ def mark_payout_paid(request, payout_id):
     return redirect('admin_payouts')
 
 
-# Track & Category CRUD
+# Track CRUD
 @admin_required
 def admin_tracks(request):
     # Parents first, each immediately followed by its own children, so the
@@ -982,22 +982,3 @@ def toggle_track_active(request, track_id):
     return redirect('admin_tracks')
 
 
-@admin_required
-def admin_categories(request):
-    categories = Category.objects.select_related('track').order_by('track__name', 'name')
-    if request.method == 'POST':
-        form = CategoryForm(request.POST)
-        if form.is_valid():
-            form.save()
-            return redirect('admin_categories')
-    else:
-        form = CategoryForm()
-    return render(request, 'dashboard/admin_categories.html', {'categories': categories, 'form': form})
-
-
-@admin_required
-def delete_category(request, category_id):
-    category = get_object_or_404(Category, id=category_id)
-    if request.method == 'POST':
-        category.delete()
-    return redirect('admin_categories')
