@@ -1,13 +1,9 @@
 {% extends 'registration/auth_base.html' %}
 {% block title %}Login — Mendoura{% endblock %}
 
+{% load static %}
 {% block illustration_content %}
-  <svg viewBox="0 0 92 106" class="w-14 h-14 mb-8" aria-hidden="true">
-    <g fill="none" stroke="white" stroke-width="11" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M8 94 L8 42 Q8 13 34 27 L58 68 Q84 83 84 42 L84 94"/>
-      <path d="M8 42 Q8 83 34 68 L58 27 Q84 13 84 42" opacity="0.55"/>
-    </g>
-  </svg>
+  <img src="{% static 'img/logo.png' %}" alt="Mendoura" class="h-16 w-auto rounded-lg mb-8">
   <h1 class="text-4xl font-extrabold leading-tight mb-4">Welcome back to<br>your learning journey.</h1>
   <p class="text-white/80 text-lg max-w-sm">Pick up right where you left off — your courses, progress, and certificates are waiting.</p>
 {% endblock %}
