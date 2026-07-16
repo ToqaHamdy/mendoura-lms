@@ -27,8 +27,9 @@
 
 <nav class="sticky top-0 z-50 glass bg-white/80 dark:bg-gray-950/80 border-b border-gray-200 dark:border-gray-800">
   <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-    <a href="{% url 'platform_home' %}" class="flex items-center group">
-      <img src="{% static 'img/logo.png' %}" alt="Mendoura" class="h-11 w-auto rounded-lg shrink-0">
+    <a href="{% url 'platform_home' %}" class="flex items-center gap-2.5 group">
+      <img src="{% static 'img/logo.png' %}" alt="" class="h-10 w-auto shrink-0">
+      <span class="text-lg font-bold tracking-wide text-gray-900 dark:text-white">Mendoura</span>
       <span class="sr-only">Mendoura home</span>
     </a>
 
@@ -233,7 +234,10 @@
 </main>
 
 <footer class="border-t border-gray-200 dark:border-gray-800 mt-24 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-  <img src="{% static 'img/logo.png' %}" alt="Mendoura" class="h-10 w-auto rounded-lg mx-auto mb-5">
+  <div class="flex items-center justify-center gap-2 mb-5">
+    <img src="{% static 'img/logo.png' %}" alt="" class="h-9 w-auto">
+    <span class="text-base font-bold tracking-wide text-gray-900 dark:text-white">Mendoura</span>
+  </div>
   <div class="flex items-center justify-center gap-5 mb-4">
     <a href="https://www.instagram.com/mendouralearning/" target="_blank" rel="noopener" aria-label="Instagram"
        class="w-9 h-9 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition">

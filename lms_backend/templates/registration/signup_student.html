@@ -3,7 +3,10 @@
 
 {% load static %}
 {% block illustration_content %}
-  <img src="{% static 'img/logo.png' %}" alt="Mendoura" class="h-16 w-auto rounded-lg mb-8">
+  <div class="flex items-center gap-3 mb-8">
+    <img src="{% static 'img/logo.png' %}" alt="" class="h-14 w-auto">
+    <span class="text-2xl font-bold tracking-wide text-white">Mendoura</span>
+  </div>
   <h1 class="text-4xl font-extrabold leading-tight mb-4">Learn skills that<br>actually matter.</h1>
   <p class="text-white/80 text-lg max-w-sm mb-8">Join thousands of students building real careers with courses from working professionals.</p>
   <ul class="space-y-3 text-white/90">
