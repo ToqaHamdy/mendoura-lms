@@ -1292,6 +1292,20 @@ class PWATests(TestCase):
         self.assertContains(response, '/manifest.json')
         self.assertContains(response, 'serviceWorker')
 
+    def test_assetlinks_served_at_wellknown_path_with_correct_content_type(self):
+        response = self.client.get('/.well-known/assetlinks.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/json')
+        data = json.loads(response.content)
+        self.assertEqual(len(data), 1)
+        entry = data[0]
+        self.assertEqual(entry['relation'], ['delegate_permission/common.handle_all_urls'])
+        self.assertEqual(entry['target']['namespace'], 'android_app')
+        self.assertEqual(entry['target']['package_name'], 'com.mendoura.twa')
+        self.assertEqual(entry['target']['sha256_cert_fingerprints'], [
+            '9B:68:56:66:B6:4B:E9:88:71:AE:52:89:C8:B3:28:BF:FA:42:9F:95:3E:CA:B9:70:36:BE:29:8D:79:D9:7A:75',
+        ])
+
 
 @override_settings(BUNNY_LIBRARY_ID='705216', BUNNY_API_KEY='test-api-key', BUNNY_TOKEN_KEY='')
 class BunnyHelperTests(TestCase):

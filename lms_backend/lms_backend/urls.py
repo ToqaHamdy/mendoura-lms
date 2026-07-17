@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import path, include
 from django.conf import settings
@@ -31,12 +31,33 @@ def offline(request):
     return render(request, 'offline.html', content_type='text/html')
 
 
+# Google Play Digital Asset Links -- verifies the Trusted Web Activity
+# (com.mendoura.twa) is allowed to open Mendoura's own links full-screen,
+# without the browser URL bar. Must be served at exactly this well-known
+# path with no redirects, hence its own view rather than a static file.
+ASSETLINKS = [{
+    'relation': ['delegate_permission/common.handle_all_urls'],
+    'target': {
+        'namespace': 'android_app',
+        'package_name': 'com.mendoura.twa',
+        'sha256_cert_fingerprints': [
+            '9B:68:56:66:B6:4B:E9:88:71:AE:52:89:C8:B3:28:BF:FA:42:9F:95:3E:CA:B9:70:36:BE:29:8D:79:D9:7A:75',
+        ],
+    },
+}]
+
+
+def assetlinks_json(request):
+    return JsonResponse(ASSETLINKS, safe=False)
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('healthz/', healthz, name='healthz'),
     path('manifest.json', manifest_json, name='manifest_json'),
     path('service-worker.js', service_worker, name='service_worker'),
     path('offline/', offline, name='offline'),
+    path('.well-known/assetlinks.json', assetlinks_json, name='assetlinks_json'),
     path('webhooks/paymob/', courses_views.paymob_webhook, name='paymob_webhook'),
     path('webhooks/bunny/', courses_views.bunny_webhook, name='bunny_webhook'),
     path('i18n/', include('django.conf.urls.i18n')),  # provides the 'set_language' POST endpoint
