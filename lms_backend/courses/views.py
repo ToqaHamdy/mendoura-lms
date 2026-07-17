@@ -23,13 +23,14 @@ from django.views.decorators.csrf import csrf_exempt
 from . import bunny, paymob
 from .access import get_or_create_enrollment, student_has_access
 from .forms import (
-    CourseCreationForm, InstructorSignUpForm, LectureForm, ModuleForm,
-    PayoutRequestForm, ProfileForm, ResourceForm, ReviewForm, StudentSignUpForm, TrackForm,
+    CourseCreationForm, GradeForm, InstructorSignUpForm, LectureForm, ModuleForm,
+    PayoutRequestForm, ProfileForm, ResourceForm, ReviewForm, StudentSignUpForm,
+    SubmissionForm, TrackForm,
 )
 from .models import (
     Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
     Module, Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription,
-    SubscriptionPeriod, Track, TrackRoadmapStep, User, WalletTransaction, WatchEvent,
+    SubscriptionPeriod, Submission, Track, TrackRoadmapStep, User, WalletTransaction, WatchEvent,
 )
 
 
@@ -577,6 +578,38 @@ def certificate_view(request, certificate_uuid):
     return render(request, 'courses/certificate.html', {'certificate': certificate})
 
 
+# Student uploads/edits their homework for a lecture that accepts one.
+# Enrollment is required (same gate as mark_lecture_complete) -- a preview
+# viewer isn't a real student and shouldn't be able to submit graded work.
+@login_required
+def submit_homework(request, course_id, lecture_id):
+    course = get_object_or_404(Course, id=course_id)
+    lecture = get_object_or_404(Lecture, id=lecture_id, module__course=course, accepts_submission=True)
+    enrollment = get_object_or_404(Enrollment, student=request.user, course=course)
+
+    submission = Submission.objects.filter(student=request.user, lecture=lecture).first()
+    if submission and submission.is_graded:
+        return render(request, 'courses/submit_homework.html', {
+            'course': course, 'lecture': lecture, 'submission': submission, 'form': None,
+        })
+
+    if request.method == 'POST':
+        form = SubmissionForm(request.POST, request.FILES, instance=submission)
+        if form.is_valid():
+            new_submission = form.save(commit=False)
+            new_submission.student = request.user
+            new_submission.lecture = lecture
+            new_submission.save()
+            messages.success(request, 'Homework submitted.')
+            return redirect('course_player', course_id=course.id, lecture_id=lecture.id)
+    else:
+        form = SubmissionForm(instance=submission)
+
+    return render(request, 'courses/submit_homework.html', {
+        'course': course, 'lecture': lecture, 'submission': submission, 'form': form,
+    })
+
+
 # Browse top-level Track categories (Tech, Languages, Marketing, Business, Design, ...)
 def track_list(request):
     tracks = Track.objects.filter(parent__isnull=True, is_active=True)
@@ -937,6 +970,35 @@ def course_students(request, course_id):
     return render(request, 'dashboard/course_students.html', {
         'course': course, 'enrollments': enrollments,
     })
+
+
+# Every homework submission across a course's lectures, ungraded first so an
+# instructor sees what needs attention before what's already settled.
+@login_required
+def course_submissions(request, course_id):
+    course = get_object_or_404(Course, id=course_id, instructor=request.user)
+    submissions = (Submission.objects.filter(lecture__module__course=course)
+                   .select_related('student', 'lecture')
+                   .order_by('graded_at', '-submitted_at'))
+    return render(request, 'dashboard/course_submissions.html', {
+        'course': course, 'submissions': submissions,
+    })
+
+
+@login_required
+def grade_submission(request, submission_id):
+    submission = get_object_or_404(
+        Submission, id=submission_id, lecture__module__course__instructor=request.user)
+    if submission.is_graded:
+        return HttpResponseForbidden('This submission has already been graded.')
+    if request.method == 'POST':
+        form = GradeForm(request.POST, instance=submission)
+        if form.is_valid():
+            graded = form.save(commit=False)
+            graded.graded_at = timezone.now()
+            graded.save()
+            messages.success(request, f'Graded {submission.student.username}\'s submission.')
+    return redirect('course_submissions', course_id=submission.lecture.module.course_id)
 
 
 # Instructor wallet: balance summary + full transaction ledger
