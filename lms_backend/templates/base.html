@@ -74,6 +74,7 @@
       {% if user.is_authenticated %}
         {% if user.is_student %}
           <a href="{% url 'my_learning' %}" class="hover:text-brand-600 dark:hover:text-brand-400">{% trans "My Learning" %}</a>
+          <a href="{% url 'ai_coach' %}" class="hover:text-brand-600 dark:hover:text-brand-400">{% trans "AI Coach" %} 🤖</a>
         {% endif %}
         {% if user.is_instructor %}
           <a href="{% url 'instructor_dashboard' %}" class="hover:text-brand-600 dark:hover:text-brand-400">{% trans "Dashboard" %}</a>
@@ -128,6 +129,9 @@
             {% if user.is_student %}
               <a href="{% url 'my_learning' %}" role="menuitem" class="block px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
                 <i class="fa-solid fa-graduation-cap mr-2 text-gray-400"></i>{% trans "My Learning" %}
+              </a>
+              <a href="{% url 'ai_coach' %}" role="menuitem" class="block px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
+                <i class="fa-solid fa-robot mr-2 text-gray-400"></i>{% trans "AI Coach" %} 🤖
               </a>
             {% endif %}
             {% if user.is_instructor %}
@@ -190,7 +194,8 @@
 
     {% if user.is_authenticated %}
       <a href="{% url 'profile' %}" class="block py-2 text-sm font-medium">{% trans "Profile" %}</a>
-      {% if user.is_student %}<a href="{% url 'my_learning' %}" class="block py-2 text-sm font-medium">{% trans "My Learning" %}</a>{% endif %}
+      {% if user.is_student %}<a href="{% url 'my_learning' %}" class="block py-2 text-sm font-medium">{% trans "My Learning" %}</a>
+      <a href="{% url 'ai_coach' %}" class="block py-2 text-sm font-medium">{% trans "AI Coach" %} 🤖</a>{% endif %}
       {% if user.is_instructor %}<a href="{% url 'instructor_dashboard' %}" class="block py-2 text-sm font-medium">{% trans "Dashboard" %}</a>{% endif %}
       {% if user.is_superuser %}<a href="{% url 'admin_dashboard' %}" class="block py-2 text-sm font-medium">{% trans "Admin Panel" %}</a>{% endif %}
       <form method="post" action="{% url 'logout' %}" class="pt-2">

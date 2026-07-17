@@ -613,3 +613,34 @@ class Certificate(models.Model):
 
     def __str__(self):
         return f'Certificate for {self.enrollment}'
+
+
+class AIConversation(models.Model):
+    """One AI Study Buddy chat thread. Students can have several over time;
+    the dashboard view always resumes the most recent one."""
+    student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='ai_conversations')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f'AI chat with {self.student.username} ({self.pk})'
+
+
+class AIMessage(models.Model):
+    class Role(models.TextChoices):
+        USER = 'user', 'User'
+        ASSISTANT = 'assistant', 'Assistant'
+
+    conversation = models.ForeignKey(AIConversation, on_delete=models.CASCADE, related_name='messages')
+    role = models.CharField(max_length=10, choices=Role.choices)
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f'{self.role}: {self.content[:50]}'

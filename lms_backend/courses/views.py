@@ -5,6 +5,7 @@ from datetime import timedelta
 from decimal import Decimal
 from functools import wraps
 
+import markdown
 import requests
 from django.contrib import messages
 from django.contrib.auth import login
@@ -20,6 +21,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
+from . import ai_coach as ai_coach_client
 from . import bunny, paymob
 from .access import get_or_create_enrollment, student_has_access
 from .forms import (
@@ -28,9 +30,10 @@ from .forms import (
     SubmissionForm, TrackForm,
 )
 from .models import (
-    Certificate, Course, Enrollment, InstructorWallet, Lecture, LectureProgress,
-    Module, Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription,
-    SubscriptionPeriod, Submission, Track, TrackRoadmapStep, User, WalletTransaction, WatchEvent,
+    AIConversation, AIMessage, Certificate, Course, Enrollment, InstructorWallet, Lecture,
+    LectureProgress, Module, Payment, Payout, Plan, Resource, RevenueDistribution, Review,
+    Subscription, SubscriptionPeriod, Submission, Track, TrackRoadmapStep, User,
+    WalletTransaction, WatchEvent,
 )
 
 
@@ -607,6 +610,78 @@ def submit_homework(request, course_id, lecture_id):
 
     return render(request, 'courses/submit_homework.html', {
         'course': course, 'lecture': lecture, 'submission': submission, 'form': form,
+    })
+
+
+# AI Study Buddy -- a persistent chat with Mendoura AI Coach. Each student has
+# one running conversation that this view always resumes (no thread picker);
+# the assistant's markdown replies are rendered to HTML server-side since the
+# frontend has no CDN-hosted markdown library to reach for.
+@login_required
+def ai_coach(request):
+    if not request.user.is_student:
+        return redirect('platform_home')
+
+    conversation = AIConversation.objects.filter(student=request.user).first()
+    if conversation is None:
+        conversation = AIConversation.objects.create(student=request.user)
+
+    messages_out = [
+        {'role': m.role, 'content': m.content,
+         'html': markdown.markdown(m.content, extensions=['fenced_code', 'tables', 'nl2br'])
+                 if m.role == AIMessage.Role.ASSISTANT else None}
+        for m in conversation.messages.all()
+    ]
+    return render(request, 'dashboard/ai_buddy.html', {
+        'conversation': conversation,
+        'chat_messages': messages_out,
+        'ai_configured': ai_coach_client.is_configured(),
+    })
+
+
+# JSON endpoint the chat page POSTs a new student message to. Stores both
+# sides of the exchange and returns the assistant's reply as ready-to-insert
+# HTML (already markdown-rendered) plus the plain text for history replay.
+@login_required
+def ai_coach_send(request):
+    if not request.user.is_student:
+        return HttpResponseForbidden()
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+
+    try:
+        text = json.loads(request.body).get('message', '').strip()
+    except (ValueError, json.JSONDecodeError):
+        return JsonResponse({'error': 'Malformed request.'}, status=400)
+
+    if not text:
+        return JsonResponse({'error': 'Message cannot be empty.'}, status=400)
+    if len(text) > 6000:
+        return JsonResponse({'error': 'That message is too long -- please shorten it.'}, status=400)
+
+    conversation = AIConversation.objects.filter(student=request.user).first()
+    if conversation is None:
+        conversation = AIConversation.objects.create(student=request.user)
+
+    AIMessage.objects.create(conversation=conversation, role=AIMessage.Role.USER, content=text)
+
+    # Bound how much history we replay to the API -- a long-running study
+    # thread shouldn't grow the request payload (and cost) without limit.
+    history = [
+        {'role': m.role, 'content': m.content}
+        for m in conversation.messages.order_by('-created_at')[:40]
+    ][::-1]
+
+    try:
+        reply = ai_coach_client.send_message(history)
+    except ai_coach_client.AICoachError as exc:
+        return JsonResponse({'error': str(exc)}, status=502)
+
+    AIMessage.objects.create(conversation=conversation, role=AIMessage.Role.ASSISTANT, content=reply)
+    conversation.save(update_fields=['updated_at'])
+
+    return JsonResponse({
+        'reply_html': markdown.markdown(reply, extensions=['fenced_code', 'tables', 'nl2br']),
     })
 
 
