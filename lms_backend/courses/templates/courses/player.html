@@ -9,7 +9,7 @@
       <i class="fa-solid fa-arrow-left"></i> {{ course.title }}
     </a>
 
-    <div class="relative mt-4 aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center">
+    <div id="video-container" class="relative mt-4 aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center">
       {% if bunny_embed_url %}
         <div id="video-skeleton" class="absolute inset-0 bg-gray-800 overflow-hidden">
           <div class="absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/10 to-transparent"></div>
@@ -34,6 +34,24 @@
                 onload="document.getElementById('video-skeleton')?.remove()"></iframe>
       {% else %}
         <p class="text-gray-500 text-sm">No video available for this lecture.</p>
+      {% endif %}
+
+      {% if enrollment and request.user.is_authenticated %}
+        {% comment %}
+          Forensic watermark: identifies whoever is watching, deters screen
+          recording/filming. Drifts + fades so it can't be framed out or
+          permanently covered, and a MutationObserver below re-asserts it
+          if tampered with.
+        {% endcomment %}
+        <div id="watermark" class="absolute select-none pointer-events-none whitespace-nowrap font-semibold text-sm sm:text-base z-40"
+             style="opacity:0.18; color:#ffffff; text-shadow:0 1px 4px rgba(0,0,0,0.85), 0 0 2px rgba(0,0,0,0.6); transition:opacity 0.6s ease, top 0.6s ease, left 0.6s ease; top:10%; left:10%;">
+          {{ request.user.get_full_name|default:request.user.username }}{% if request.user.email %} &middot; {{ request.user.email }}{% endif %}{% if request.user.phone_number %} &middot; {{ request.user.phone_number }}{% endif %}
+        </div>
+        <div id="watermark-blackout" class="absolute inset-0 z-50 bg-black hidden flex-col items-center justify-center text-center text-white text-sm p-6">
+          <i class="fa-solid fa-shield-halved text-2xl mb-3"></i>
+          <p class="font-semibold mb-1">Playback protection triggered</p>
+          <p class="text-white/70">Reload the page to keep watching.</p>
+        </div>
       {% endif %}
     </div>
 
@@ -150,6 +168,99 @@
 
     setInterval(flush, FLUSH_INTERVAL_MS);
     window.addEventListener('pagehide', flush);
+  })();
+</script>
+{% endif %}
+{% if enrollment and request.user.is_authenticated %}
+<script>
+  // Dynamic watermark: drifts to a new spot every 10-15s (fading out/in
+  // rather than jump-cutting) so it can't be cropped or blocked by a
+  // sticker over one fixed corner. A MutationObserver re-asserts it the
+  // instant anyone tries to hide, dim, or remove it via devtools.
+  (function () {
+    const container = document.getElementById('video-container');
+    const watermark = document.getElementById('watermark');
+    const blackout = document.getElementById('watermark-blackout');
+    if (!container || !watermark) return;
+
+    const TARGET_OPACITY = '0.18';
+    const MIN_MS = 10000, MAX_MS = 15000;
+    // Keep the mark within the frame, clear of corner UI (fullscreen button, etc).
+    const POS_BOUNDS = { top: [8, 78], left: [6, 68] };
+
+    const containerObserver = new MutationObserver(onContainerMutation);
+    const watermarkObserver = new MutationObserver(onWatermarkMutation);
+    startObserving();
+
+    function startObserving() {
+      containerObserver.observe(container, { childList: true });
+      watermarkObserver.observe(watermark, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+    }
+
+    // Our own animation legitimately changes watermark.style every cycle --
+    // disconnect first so the observer never sees (and can't misfire on)
+    // mutations we made ourselves. Re-observe right after.
+    function withObserversPaused(fn) {
+      watermarkObserver.disconnect();
+      containerObserver.disconnect();
+      fn();
+      startObserving();
+    }
+
+    function scheduleNext() {
+      const delay = MIN_MS + Math.random() * (MAX_MS - MIN_MS);
+      return setTimeout(drift, delay);
+    }
+
+    function drift() {
+      withObserversPaused(() => { watermark.style.opacity = '0'; });
+      setTimeout(() => {
+        withObserversPaused(() => {
+          const top = POS_BOUNDS.top[0] + Math.random() * (POS_BOUNDS.top[1] - POS_BOUNDS.top[0]);
+          const left = POS_BOUNDS.left[0] + Math.random() * (POS_BOUNDS.left[1] - POS_BOUNDS.left[0]);
+          watermark.style.top = top + '%';
+          watermark.style.left = left + '%';
+          watermark.style.opacity = TARGET_OPACITY;
+        });
+      }, 350);
+      timerHandle = scheduleNext();
+    }
+
+    let timerHandle = scheduleNext();
+
+    function triggerTamperResponse() {
+      clearTimeout(timerHandle);
+      // Real <video> tags are same-origin and can actually be paused; the
+      // Bunny/external embed is a cross-origin iframe we have no control
+      // over, so the blackout overlay is the enforcement for that case.
+      container.querySelector('video')?.pause();
+      if (blackout) blackout.style.display = 'flex';
+      withObserversPaused(() => {
+        if (!watermark.isConnected) container.appendChild(watermark);
+        watermark.removeAttribute('class');
+        watermark.className = 'absolute select-none pointer-events-none whitespace-nowrap font-semibold text-sm sm:text-base z-40';
+        watermark.style.display = '';
+        watermark.style.opacity = TARGET_OPACITY;
+      });
+    }
+
+    function onContainerMutation(mutations) {
+      for (const m of mutations) {
+        if (Array.from(m.removedNodes).includes(watermark)) {
+          triggerTamperResponse();
+          return;
+        }
+      }
+    }
+
+    function onWatermarkMutation() {
+      const tampered = watermark.style.display === 'none'
+        || watermark.style.visibility === 'hidden'
+        || parseFloat(watermark.style.opacity || TARGET_OPACITY) < 0.1
+        || watermark.className.indexOf('hidden') !== -1
+        || watermark.hidden === true;
+      if (tampered) triggerTamperResponse();
+    }
   })();
 </script>
 {% endif %}
