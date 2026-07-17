@@ -28,6 +28,11 @@
       <label class="text-sm font-semibold">Free preview (viewable without enrollment)</label>
     </div>
 
+    <div class="flex items-center gap-2">
+      {{ form.accepts_submission }}
+      <label class="text-sm font-semibold">Accepts homework submission</label>
+    </div>
+
     <div class="border-t border-gray-200 dark:border-gray-800 pt-5">
       <label class="block text-sm font-semibold mb-2">External Video URL <span class="text-gray-400 font-normal">(only if not uploading to Bunny)</span></label>
       {{ form.video_url }}

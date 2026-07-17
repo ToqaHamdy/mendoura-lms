@@ -16,7 +16,7 @@ from . import paymob
 from .models import (
     Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
-    Track, User, WalletTransaction, WatchEvent,
+    Submission, Track, User, WalletTransaction, WatchEvent,
 )
 from .money import calculate_split
 
@@ -1377,3 +1377,135 @@ class BunnyPlayerEmbedTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'iframe.mediadelivery.net/embed/705216/guid-abc')
         self.assertContains(response, 'token=')
+
+
+class HomeworkSubmissionTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='hw_inst', password='pw', is_instructor=True)
+        self.other_instructor = User.objects.create_user(
+            username='hw_inst2', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='hw_stud', password='pw', is_student=True)
+        self.outsider = User.objects.create_user(
+            username='hw_outsider', password='pw', is_student=True)
+        track = Track.objects.create(name='HW Track')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='HW Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED)
+        module = Module.objects.create(course=self.course, title='M1')
+        self.hw_lecture = Lecture.objects.create(
+            module=module, title='Assignment 1', accepts_submission=True)
+        self.plain_lecture = Lecture.objects.create(
+            module=module, title='No Homework Here', accepts_submission=False)
+        Enrollment.objects.create(student=self.student, course=self.course)
+
+    def _submit_url(self, lecture):
+        return reverse('submit_homework', args=[self.course.id, lecture.id])
+
+    def test_enrolled_student_can_submit_homework(self):
+        self.client.force_login(self.student)
+        response = self.client.post(self._submit_url(self.hw_lecture), {
+            'submission_link': 'https://github.com/example/repo', 'note': 'done',
+        })
+        self.assertEqual(response.status_code, 302)
+        submission = Submission.objects.get(student=self.student, lecture=self.hw_lecture)
+        self.assertEqual(submission.submission_link, 'https://github.com/example/repo')
+        self.assertIsNone(submission.graded_at)
+
+    def test_cannot_submit_to_lecture_that_does_not_accept_submission(self):
+        self.client.force_login(self.student)
+        response = self.client.post(self._submit_url(self.plain_lecture), {
+            'note': 'sneaky',
+        })
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Submission.objects.filter(lecture=self.plain_lecture).exists())
+
+    def test_unenrolled_student_cannot_submit_homework(self):
+        self.client.force_login(self.outsider)
+        response = self.client.post(self._submit_url(self.hw_lecture), {'note': 'x'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_anonymous_user_redirected_to_login(self):
+        response = self.client.get(self._submit_url(self.hw_lecture))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_student_can_update_ungraded_submission(self):
+        self.client.force_login(self.student)
+        self.client.post(self._submit_url(self.hw_lecture), {'note': 'first draft'})
+        self.client.post(self._submit_url(self.hw_lecture), {'note': 'final draft'})
+        self.assertEqual(Submission.objects.filter(student=self.student, lecture=self.hw_lecture).count(), 1)
+        submission = Submission.objects.get(student=self.student, lecture=self.hw_lecture)
+        self.assertEqual(submission.note, 'final draft')
+
+    def test_graded_submission_is_locked_against_further_edits(self):
+        submission = Submission.objects.create(
+            student=self.student, lecture=self.hw_lecture, note='original',
+            grade='90', graded_at=timezone.now())
+        self.client.force_login(self.student)
+        response = self.client.post(self._submit_url(self.hw_lecture), {'note': 'trying to sneak an edit in'})
+        self.assertEqual(response.status_code, 200)
+        submission.refresh_from_db()
+        self.assertEqual(submission.note, 'original')
+
+
+class GradeSubmissionTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='gr_inst', password='pw', is_instructor=True)
+        self.other_instructor = User.objects.create_user(
+            username='gr_inst2', password='pw', is_instructor=True)
+        self.student = User.objects.create_user(
+            username='gr_stud', password='pw', is_student=True)
+        track = Track.objects.create(name='Grade Track')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Grade Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED)
+        module = Module.objects.create(course=self.course, title='M1')
+        self.lecture = Lecture.objects.create(module=module, title='Assignment', accepts_submission=True)
+        self.submission = Submission.objects.create(
+            student=self.student, lecture=self.lecture, note='here is my work')
+
+    def _grade_url(self):
+        return reverse('grade_submission', args=[self.submission.id])
+
+    def test_instructor_can_grade_own_course_submission(self):
+        self.client.force_login(self.instructor)
+        response = self.client.post(self._grade_url(), {'grade': '95', 'feedback': 'Great work!'})
+        self.assertEqual(response.status_code, 302)
+        self.submission.refresh_from_db()
+        self.assertEqual(self.submission.grade, '95')
+        self.assertEqual(self.submission.feedback, 'Great work!')
+        self.assertIsNotNone(self.submission.graded_at)
+
+    def test_other_instructor_cannot_grade_submission_for_someone_elses_course(self):
+        self.client.force_login(self.other_instructor)
+        response = self.client.post(self._grade_url(), {'grade': '10', 'feedback': 'nope'})
+        self.assertEqual(response.status_code, 404)
+        self.submission.refresh_from_db()
+        self.assertIsNone(self.submission.grade)
+        self.assertIsNone(self.submission.graded_at)
+
+    def test_cannot_regrade_an_already_graded_submission(self):
+        self.submission.grade = '80'
+        self.submission.graded_at = timezone.now()
+        self.submission.save()
+        self.client.force_login(self.instructor)
+        response = self.client.post(self._grade_url(), {'grade': '100', 'feedback': 'changed my mind'})
+        self.assertEqual(response.status_code, 403)
+        self.submission.refresh_from_db()
+        self.assertEqual(self.submission.grade, '80')
+
+    def test_other_instructor_cannot_view_course_submissions(self):
+        self.client.force_login(self.other_instructor)
+        response = self.client.get(reverse('course_submissions', args=[self.course.id]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_owning_instructor_can_view_course_submissions(self):
+        self.client.force_login(self.instructor)
+        response = self.client.get(reverse('course_submissions', args=[self.course.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'gr_stud')

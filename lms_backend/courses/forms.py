@@ -174,16 +174,33 @@ class SubmissionForm(forms.ModelForm):
         fields = ['submitted_file', 'submission_link', 'note']
         widgets = {
             'submitted_file': forms.ClearableFileInput(attrs={
-                'class': 'w-full border border-gray-300 rounded-lg p-3'
+                'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
             }),
             'submission_link': forms.URLInput(attrs={
                 'placeholder': 'Optional: Google Drive / GitHub link',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'note': forms.Textarea(attrs={
                 'rows': 3,
                 'placeholder': 'Any notes for your instructor?',
-                'class': 'w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+        }
+
+
+# Grade Form (Instructor grades a student's homework Submission)
+class GradeForm(forms.ModelForm):
+    class Meta:
+        model = Submission
+        fields = ['grade', 'feedback']
+        widgets = {
+            'grade': forms.TextInput(attrs={
+                'placeholder': 'e.g. 18/20 or A-',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
+            }),
+            'feedback': forms.Textarea(attrs={
+                'rows': 3, 'placeholder': 'Feedback for the student...',
+                'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
 
@@ -263,7 +280,7 @@ class LectureForm(forms.ModelForm):
     # stays for the occasional externally-hosted embed.
     class Meta:
         model = Lecture
-        fields = ['title', 'video_url', 'is_preview', 'order']
+        fields = ['title', 'video_url', 'is_preview', 'accepts_submission', 'order']
         widgets = {
             'title': forms.TextInput(attrs={
                 'placeholder': 'e.g. Introduction to Variables',

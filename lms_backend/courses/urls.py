@@ -47,6 +47,8 @@ urlpatterns = [
     path('lectures/<int:lecture_id>/resources/', views.add_resource, name='add_resource'),
     path('resources/<int:resource_id>/delete/', views.delete_resource, name='delete_resource'),
     path('course/<int:course_id>/students/', views.course_students, name='course_students'),
+    path('course/<int:course_id>/submissions/', views.course_submissions, name='course_submissions'),
+    path('submissions/<int:submission_id>/grade/', views.grade_submission, name='grade_submission'),
     path('dashboard/wallet/', views.instructor_wallet, name='instructor_wallet'),
     path('dashboard/wallet/payout/', views.request_payout, name='request_payout'),
 
@@ -63,5 +65,7 @@ urlpatterns = [
          name='mark_lecture_complete'),
     path('learn/<int:course_id>/<int:lecture_id>/watch/', views.record_watch_event,
          name='record_watch_event'),
+    path('learn/<int:course_id>/<int:lecture_id>/submit/', views.submit_homework,
+         name='submit_homework'),
     path('certificates/<uuid:certificate_uuid>/', views.certificate_view, name='certificate_view'),
 ]

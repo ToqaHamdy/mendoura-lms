@@ -211,6 +211,8 @@ class Lecture(models.Model):
     video_file = models.FileField(upload_to='lecture_videos/', blank=True, null=True)
     duration_seconds = models.PositiveIntegerField(default=0)
     is_preview = models.BooleanField(default=False, help_text='Viewable for free without enrollment')
+    accepts_submission = models.BooleanField(
+        default=False, help_text='Students can upload homework for this lecture')
     order = models.PositiveIntegerField(default=0)
     ai_generated_script = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -252,12 +254,22 @@ class Submission(models.Model):
     grade = models.CharField(max_length=50, blank=True, null=True)
     feedback = models.TextField(blank=True, null=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # Set the moment an instructor grades this submission. Once set, the
+    # student can no longer edit it -- mirrors how Payment/WalletTransaction
+    # freeze fields once a record has been acted on downstream.
+    graded_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['-submitted_at']
+        unique_together = ('student', 'lecture')
 
     def __str__(self):
         return f"{self.student.username} - {self.lecture.title}"
+
+    @property
+    def is_graded(self):
+        return self.graded_at is not None
 
 
 class Payment(models.Model):

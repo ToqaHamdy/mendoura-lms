@@ -54,6 +54,18 @@
       </form>
     {% endif %}
 
+    {% if lecture.accepts_submission and enrollment %}
+      <div class="mt-8 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <p class="font-semibold">Homework</p>
+          <p class="text-xs text-gray-400 mt-1">This lecture has a homework submission.</p>
+        </div>
+        <a href="{% url 'submit_homework' course.id lecture.id %}" class="px-5 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 transition text-sm">
+          <i class="fa-solid fa-file-arrow-up mr-1"></i> Submit / View Homework
+        </a>
+      </div>
+    {% endif %}
+
     {% if lecture.resources.all %}
       <h2 class="text-lg font-bold mt-8 mb-3">Resources</h2>
       <div class="space-y-2">

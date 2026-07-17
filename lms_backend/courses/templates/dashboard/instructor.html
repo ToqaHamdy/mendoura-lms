@@ -57,6 +57,7 @@
           {% endif %}
           <a href="{% url 'manage_modules' course.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Curriculum</a>
           <a href="{% url 'course_students' course.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Students</a>
+          <a href="{% url 'course_submissions' course.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Submissions</a>
           <a href="{% url 'edit_course' course.id %}" class="text-sm font-semibold text-brand-600 hover:underline">Edit</a>
           {% if course.status == 'draft' or course.status == 'rejected' %}
             <form method="post" action="{% url 'toggle_publish' course.id %}">
