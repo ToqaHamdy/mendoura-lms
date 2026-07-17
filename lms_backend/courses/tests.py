@@ -16,9 +16,9 @@ from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 
-from . import paymob
+from . import ai_coach, paymob
 from .models import (
-    Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
+    AIConversation, AIMessage, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
     Submission, Track, User, WalletTransaction, WatchEvent,
 )
@@ -1617,3 +1617,130 @@ class PasswordResetFlowTests(TestCase):
         # the token was already consumed by the first successful reset.
         response = self.client.get(url, follow=True)
         self.assertContains(response, 'Link expired')
+
+
+class AICoachTests(TestCase):
+    def setUp(self):
+        self.student = User.objects.create_user(username='ai_stud', password='pw', is_student=True)
+        self.instructor = User.objects.create_user(
+            username='ai_inst', password='pw', is_instructor=True)
+
+    def test_anonymous_user_redirected_to_login(self):
+        response = self.client.get(reverse('ai_coach'))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn('/login/', response.url)
+
+    def test_non_student_cannot_view_page(self):
+        self.client.force_login(self.instructor)
+        response = self.client.get(reverse('ai_coach'))
+        self.assertRedirects(response, reverse('platform_home'))
+
+    def test_student_sees_greeting_on_first_visit(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('ai_coach'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Welcome to Mendoura AI Coach')
+        self.assertTrue(AIConversation.objects.filter(student=self.student).exists())
+
+    def test_page_shows_not_configured_banner_when_api_key_missing(self):
+        self.client.force_login(self.student)
+        with override_settings(AI_API_KEY=''):
+            response = self.client.get(reverse('ai_coach'))
+        self.assertContains(response, "isn't configured yet")
+
+    def test_non_student_cannot_post_message(self):
+        self.client.force_login(self.instructor)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'hi'}), content_type='application/json')
+        self.assertEqual(response.status_code, 403)
+
+    def test_get_not_allowed_on_send_endpoint(self):
+        self.client.force_login(self.student)
+        response = self.client.get(reverse('ai_coach_send'))
+        self.assertEqual(response.status_code, 405)
+
+    def test_empty_message_rejected(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': '   '}), content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+
+    def test_overlong_message_rejected(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'x' * 6001}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 400)
+
+    @patch('courses.views.ai_coach_client.send_message')
+    def test_successful_reply_persists_both_messages_and_renders_markdown(self, mock_send):
+        mock_send.return_value = 'Hello **world**'
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'Hi coach'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('<strong>world</strong>', response.json()['reply_html'])
+
+        conversation = AIConversation.objects.get(student=self.student)
+        messages = list(conversation.messages.order_by('created_at'))
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0].role, AIMessage.Role.USER)
+        self.assertEqual(messages[0].content, 'Hi coach')
+        self.assertEqual(messages[1].role, AIMessage.Role.ASSISTANT)
+        self.assertEqual(messages[1].content, 'Hello **world**')
+
+    @patch('courses.views.ai_coach_client.send_message')
+    def test_api_error_returns_502_and_does_not_store_assistant_reply(self, mock_send):
+        mock_send.side_effect = ai_coach.AICoachError('The AI Coach is not configured yet.')
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'Hi coach'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 502)
+
+        conversation = AIConversation.objects.get(student=self.student)
+        # The student's message is kept even though the reply failed --
+        # only the assistant side is missing.
+        self.assertEqual(conversation.messages.count(), 1)
+        self.assertEqual(conversation.messages.first().role, AIMessage.Role.USER)
+
+    @patch('courses.views.ai_coach_client.send_message')
+    def test_history_is_replayed_oldest_first(self, mock_send):
+        mock_send.return_value = 'ok'
+        self.client.force_login(self.student)
+        self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'first'}),
+            content_type='application/json')
+        self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'second'}),
+            content_type='application/json')
+
+        second_call_history = mock_send.call_args_list[1].args[0]
+        contents = [m['content'] for m in second_call_history]
+        self.assertEqual(contents, ['first', 'ok', 'second'])
+
+    @patch('courses.views.ai_coach_client.send_message')
+    def test_existing_conversation_is_reused_across_requests(self, mock_send):
+        mock_send.return_value = 'ok'
+        self.client.force_login(self.student)
+        self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'first'}),
+            content_type='application/json')
+        self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'second'}),
+            content_type='application/json')
+        self.assertEqual(AIConversation.objects.filter(student=self.student).count(), 1)
+
+
+class AICoachClientTests(TestCase):
+    def test_is_configured_reflects_setting(self):
+        with override_settings(AI_API_KEY=''):
+            self.assertFalse(ai_coach.is_configured())
+        with override_settings(AI_API_KEY='some-key'):
+            self.assertTrue(ai_coach.is_configured())
+
+    def test_send_message_raises_when_not_configured(self):
+        with override_settings(AI_API_KEY=''):
+            with self.assertRaises(ai_coach.AICoachError):
+                ai_coach.send_message([{'role': 'user', 'content': 'hi'}])

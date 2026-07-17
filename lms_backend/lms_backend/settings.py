@@ -236,6 +236,10 @@ EMAIL_BACKEND = (
     else 'django.core.mail.backends.console.EmailBackend'
 )
 
+# AI Study Buddy -- Anthropic Claude API key. Blank in local dev/tests is
+# fine; the view surfaces a friendly error instead of crashing when it's unset.
+AI_API_KEY = config('AI_API_KEY', default='')
+
 # Without this, Django's default logging config sends 500 errors to
 # mail_admins (which does nothing since ADMINS isn't set) and prints nothing
 # to the console -- so a production 500 leaves no trace anywhere. This makes
