@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.http import HttpResponse
+from django.shortcuts import render
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
@@ -13,9 +14,29 @@ def healthz(request):
     return HttpResponse('ok')
 
 
+# PWA manifest + service worker. Both are rendered as templates (not plain
+# static files) so the manifest can build correct absolute icon URLs via
+# {% static %} and the service worker can be served from the site root --
+# a service worker's scope is capped at the directory it's served from, and
+# under /static/ it could never control pages outside that prefix.
+def manifest_json(request):
+    return render(request, 'manifest.json', content_type='application/manifest+json')
+
+
+def service_worker(request):
+    return render(request, 'service-worker.js', content_type='text/javascript')
+
+
+def offline(request):
+    return render(request, 'offline.html', content_type='text/html')
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('healthz/', healthz, name='healthz'),
+    path('manifest.json', manifest_json, name='manifest_json'),
+    path('service-worker.js', service_worker, name='service_worker'),
+    path('offline/', offline, name='offline'),
     path('webhooks/paymob/', courses_views.paymob_webhook, name='paymob_webhook'),
     path('webhooks/bunny/', courses_views.bunny_webhook, name='bunny_webhook'),
     path('i18n/', include('django.conf.urls.i18n')),  # provides the 'set_language' POST endpoint

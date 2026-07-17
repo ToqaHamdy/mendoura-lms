@@ -1254,6 +1254,45 @@ class HealthCheckTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+class PWATests(TestCase):
+    def test_manifest_is_valid_json_with_correct_content_type(self):
+        response = self.client.get('/manifest.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/manifest+json')
+        data = json.loads(response.content)
+        self.assertEqual(data['name'], 'Mendoura LMS')
+        self.assertEqual(data['short_name'], 'Mendoura')
+        self.assertEqual(data['start_url'], '/')
+        self.assertEqual(data['display'], 'standalone')
+        self.assertEqual(data['background_color'], '#030712')
+        self.assertEqual(data['theme_color'], '#030712')
+        sizes = {icon['sizes'] for icon in data['icons']}
+        self.assertEqual(sizes, {'192x192', '512x512'})
+        for icon in data['icons']:
+            self.assertTrue(icon['src'].startswith('/static/img/android-'))
+
+    def test_service_worker_served_at_root_with_correct_content_type(self):
+        response = self.client.get('/service-worker.js')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/javascript')
+        content = response.content.decode()
+        self.assertIn("addEventListener('fetch'", content)
+        # Must never intercept/cache third-party media -- the whole point
+        # of the bypass list is that these hosts are never touched.
+        self.assertIn('res.cloudinary.com', content)
+        self.assertIn('video.bunnycdn.com', content)
+
+    def test_offline_page_renders(self):
+        response = self.client.get('/offline/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "You're offline")
+
+    def test_manifest_link_present_on_every_page(self):
+        response = self.client.get('/')
+        self.assertContains(response, '/manifest.json')
+        self.assertContains(response, 'serviceWorker')
+
+
 @override_settings(BUNNY_LIBRARY_ID='705216', BUNNY_API_KEY='test-api-key', BUNNY_TOKEN_KEY='')
 class BunnyHelperTests(TestCase):
     def test_upload_credentials_signature_matches_bunny_scheme(self):
