@@ -5,6 +5,7 @@ same pattern as bunny.create_video / paymob's request helpers.
 """
 import anthropic
 from django.conf import settings
+from django.utils.translation import gettext as _
 
 MODEL = 'claude-opus-4-8'
 
@@ -28,7 +29,7 @@ def send_message(history: list[dict]) -> str:
     """history is a list of {"role": "user"|"assistant", "content": str},
     oldest first. Returns the assistant's reply text."""
     if not is_configured():
-        raise AICoachError('The AI Coach is not configured yet.')
+        raise AICoachError(_('The AI Coach is not configured yet.'))
 
     client = anthropic.Anthropic(api_key=settings.AI_API_KEY)
     try:

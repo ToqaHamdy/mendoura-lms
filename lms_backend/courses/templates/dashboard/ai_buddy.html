@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load i18n %}
 {% block title %}AI Coach - Mendoura{% endblock %}
 
 {% block content %}
@@ -27,15 +28,15 @@
         <i class="fa-solid fa-robot text-white"></i>
       </div>
       <div class="min-w-0">
-        <h1 class="text-lg font-bold text-white truncate">Mendoura AI Coach</h1>
-        <p class="text-xs text-gray-400">Your 24/7 Study Partner</p>
+        <h1 class="text-lg font-bold text-white truncate">{% trans "Mendoura AI Coach" %}</h1>
+        <p class="text-xs text-gray-400">{% trans "Your 24/7 Study Partner" %}</p>
       </div>
     </div>
 
     {% if not ai_configured %}
       <div class="mx-6 mt-4 p-3 rounded-lg bg-yellow-500/10 text-yellow-400 text-sm">
         <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-        AI Coach isn't configured yet -- an administrator needs to set <code>AI_API_KEY</code>.
+        {% blocktrans %}AI Coach isn't configured yet -- an administrator needs to set <code>AI_API_KEY</code>.{% endblocktrans %}
       </div>
     {% endif %}
 
@@ -46,8 +47,8 @@
             <i class="fa-solid fa-robot text-white text-xs"></i>
           </div>
           <div class="bg-gray-900 text-gray-100 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[80%] text-sm leading-relaxed">
-            <p class="font-semibold text-white mb-1">Welcome to Mendoura AI Coach - Your 24/7 Study Partner</p>
-            <p>Ask me to explain a tricky concept, summarize a lecture, build you a study schedule, or just talk through what you're stuck on. I'm here whenever you need me.</p>
+            <p class="font-semibold text-white mb-1">{% trans "Welcome to Mendoura AI Coach - Your 24/7 Study Partner" %}</p>
+            <p>{% trans "Ask me to explain a tricky concept, summarize a lecture, build you a study schedule, or just talk through what you're stuck on. I'm here whenever you need me." %}</p>
           </div>
         </div>
       {% endif %}
@@ -69,7 +70,7 @@
 
     <form id="chat-form" class="border-t border-gray-800 px-4 py-4 flex items-end gap-3">
       {% csrf_token %}
-      <textarea id="chat-input" rows="1" maxlength="6000" placeholder="Ask your AI Coach anything..."
+      <textarea id="chat-input" rows="1" maxlength="6000" placeholder="{% trans "Ask your AI Coach anything..." %}"
                 {% if not ai_configured %}disabled{% endif %}
                 class="flex-1 resize-none bg-gray-900 text-gray-100 placeholder-gray-500 rounded-xl px-4 py-3 text-sm border border-gray-800 focus:ring-2 focus:ring-brand-500 outline-none disabled:opacity-50"></textarea>
       <button type="submit" id="chat-send" {% if not ai_configured %}disabled{% endif %}
@@ -84,6 +85,8 @@
 {% endblock %}
 
 {% block extra_js %}
+{% trans "Something went wrong. Please try again." as msg_generic_error %}
+{% trans "Network error -- please try again." as msg_network_error %}
 <script>
 (function () {
   const log = document.getElementById('chat-log');
@@ -168,13 +171,13 @@
       document.getElementById('typing-indicator')?.remove();
 
       if (!res.ok) {
-        appendAssistantBubble(`<p class="text-red-400">${escapeHtml(data.error || 'Something went wrong. Please try again.')}</p>`);
+        appendAssistantBubble(`<p class="text-red-400">${escapeHtml(data.error || '{{ msg_generic_error|escapejs }}')}</p>`);
       } else {
         appendAssistantBubble(data.reply_html);
       }
     } catch (err) {
       document.getElementById('typing-indicator')?.remove();
-      appendAssistantBubble('<p class="text-red-400">Network error -- please try again.</p>');
+      appendAssistantBubble('<p class="text-red-400">{{ msg_network_error|escapejs }}</p>');
     } finally {
       input.disabled = false;
       sendBtn.disabled = false;

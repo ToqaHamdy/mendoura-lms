@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
+from django.utils.translation import gettext_lazy as _
 from .models import (
     User, Course, InstructorWallet, Lecture, Module, Resource, Submission, Track,
     Review, Payout,
@@ -19,19 +20,19 @@ class DuplicateGuardMixin:
     def clean_username(self):
         username = self.cleaned_data.get('username')
         if username and User.objects.filter(username__iexact=username).exists():
-            raise forms.ValidationError('An account with this username already exists.')
+            raise forms.ValidationError(_('An account with this username already exists.'))
         return username
 
     def clean_email(self):
         email = (self.cleaned_data.get('email') or '').strip().lower()
         if email and User.objects.filter(email__iexact=email).exists():
-            raise forms.ValidationError('An account with this email already exists.')
+            raise forms.ValidationError(_('An account with this email already exists.'))
         return email
 
     def clean_phone_number(self):
         phone = (self.cleaned_data.get('phone_number') or '').strip()
         if phone and User.objects.filter(phone_number=phone).exists():
-            raise forms.ValidationError('An account with this phone number already exists.')
+            raise forms.ValidationError(_('An account with this phone number already exists.'))
         return phone
 
 
@@ -39,7 +40,7 @@ class DuplicateGuardMixin:
 class StudentSignUpForm(DuplicateGuardMixin, UserCreationForm):
     phone_number = forms.CharField(
         max_length=15, required=False,
-        widget=forms.TextInput(attrs={'placeholder': 'Phone Number', 'class': INPUT_CLASSES})
+        widget=forms.TextInput(attrs={'placeholder': _('Phone Number'), 'class': INPUT_CLASSES})
     )
 
     class Meta(UserCreationForm.Meta):
@@ -63,7 +64,7 @@ class StudentSignUpForm(DuplicateGuardMixin, UserCreationForm):
 class InstructorSignUpForm(DuplicateGuardMixin, UserCreationForm):
     phone_number = forms.CharField(
         max_length=15, required=True,
-        widget=forms.TextInput(attrs={'placeholder': 'Phone Number', 'class': INPUT_CLASSES})
+        widget=forms.TextInput(attrs={'placeholder': _('Phone Number'), 'class': INPUT_CLASSES})
     )
 
     class Meta(UserCreationForm.Meta):
@@ -99,13 +100,13 @@ COURSE_FORM_INPUT_CLASSES = (
 
 
 COURSE_LANGUAGE_CHOICES = [
-    ('English', 'English'),
-    ('Arabic', 'Arabic'),
-    ('French', 'French'),
-    ('German', 'German'),
-    ('Spanish', 'Spanish'),
-    ('Italian', 'Italian'),
-    ('Turkish', 'Turkish'),
+    ('English', _('English')),
+    ('Arabic', _('Arabic')),
+    ('French', _('French')),
+    ('German', _('German')),
+    ('Spanish', _('Spanish')),
+    ('Italian', _('Italian')),
+    ('Turkish', _('Turkish')),
 ]
 
 
@@ -119,11 +120,11 @@ class CourseCreationForm(forms.ModelForm):
                   'price', 'is_free', 'thumbnail', 'ai_script']
         widgets = {
             'title': forms.TextInput(attrs={
-                'placeholder': 'e.g. Introduction to Python',
+                'placeholder': _('e.g. Introduction to Python'),
                 'class': COURSE_FORM_INPUT_CLASSES,
             }),
             'description': forms.Textarea(attrs={
-                'rows': 4, 'placeholder': 'What is this course about?',
+                'rows': 4, 'placeholder': _('What is this course about?'),
                 'class': COURSE_FORM_INPUT_CLASSES,
             }),
             'track': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
@@ -138,7 +139,7 @@ class CourseCreationForm(forms.ModelForm):
             }),
             'ai_script': forms.Textarea(attrs={
                 'rows': 8,
-                'placeholder': 'Type the script here. Our AI will turn this text into a professional video lecture.',
+                'placeholder': _('Type the script here. Our AI will turn this text into a professional video lecture.'),
                 'class': COURSE_FORM_INPUT_CLASSES,
             }),
         }
@@ -161,7 +162,7 @@ class ReviewForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'comment': forms.Textarea(attrs={
-                'rows': 3, 'placeholder': 'Share your experience with this course...',
+                'rows': 3, 'placeholder': _('Share your experience with this course...'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
@@ -177,12 +178,12 @@ class SubmissionForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 dark:border-gray-700 rounded-lg p-3'
             }),
             'submission_link': forms.URLInput(attrs={
-                'placeholder': 'Optional: Google Drive / GitHub link',
+                'placeholder': _('Optional: Google Drive / GitHub link'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'note': forms.Textarea(attrs={
                 'rows': 3,
-                'placeholder': 'Any notes for your instructor?',
+                'placeholder': _('Any notes for your instructor?'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
@@ -195,11 +196,11 @@ class GradeForm(forms.ModelForm):
         fields = ['grade', 'feedback']
         widgets = {
             'grade': forms.TextInput(attrs={
-                'placeholder': 'e.g. 18/20 or A-',
+                'placeholder': _('e.g. 18/20 or A-'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'feedback': forms.Textarea(attrs={
-                'rows': 3, 'placeholder': 'Feedback for the student...',
+                'rows': 3, 'placeholder': _('Feedback for the student...'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
@@ -212,7 +213,7 @@ class TrackForm(forms.ModelForm):
         fields = ['parent', 'name', 'description', 'icon', 'order']
         widgets = {
             'parent': forms.Select(attrs={'class': INPUT_CLASSES}),
-            'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'e.g. Web Development'}),
+            'name': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': _('e.g. Web Development')}),
             'description': forms.Textarea(attrs={'class': INPUT_CLASSES, 'rows': 2}),
             'icon': forms.TextInput(attrs={'class': INPUT_CLASSES, 'placeholder': 'fa-laptop-code'}),
             'order': forms.NumberInput(attrs={'class': INPUT_CLASSES}),
@@ -231,7 +232,7 @@ class ModuleForm(forms.ModelForm):
         fields = ['title', 'order']
         widgets = {
             'title': forms.TextInput(attrs={
-                'placeholder': 'e.g. Getting Started',
+                'placeholder': _('e.g. Getting Started'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'order': forms.NumberInput(attrs={
@@ -247,7 +248,7 @@ class ResourceForm(forms.ModelForm):
         fields = ['title', 'file']
         widgets = {
             'title': forms.TextInput(attrs={
-                'placeholder': 'e.g. Slides.pdf',
+                'placeholder': _('e.g. Slides.pdf'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'file': forms.ClearableFileInput(attrs={
@@ -267,7 +268,7 @@ class PayoutRequestForm(forms.ModelForm):
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'method': forms.TextInput(attrs={
-                'placeholder': 'e.g. Bank transfer, PayPal',
+                'placeholder': _('e.g. Bank transfer, PayPal'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
         }
@@ -283,11 +284,11 @@ class LectureForm(forms.ModelForm):
         fields = ['title', 'video_url', 'is_preview', 'accepts_submission', 'order']
         widgets = {
             'title': forms.TextInput(attrs={
-                'placeholder': 'e.g. Introduction to Variables',
+                'placeholder': _('e.g. Introduction to Variables'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'video_url': forms.URLInput(attrs={
-                'placeholder': 'https://youtube.com/... (external embed, optional)',
+                'placeholder': _('https://youtube.com/... (external embed, optional)'),
                 'class': 'w-full border border-gray-300 dark:border-gray-700 bg-transparent rounded-lg p-3 focus:ring-2 focus:ring-brand-500 outline-none'
             }),
             'order': forms.NumberInput(attrs={

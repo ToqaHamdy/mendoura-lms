@@ -19,6 +19,7 @@ from django.db.models.functions import TruncMonth
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views.decorators.csrf import csrf_exempt
 
 from . import ai_coach as ai_coach_client
@@ -60,7 +61,7 @@ def profile(request):
         form = ProfileForm(request.POST, request.FILES, instance=request.user)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Profile updated.')
+            messages.success(request, _('Profile updated.'))
             return redirect('profile')
     else:
         form = ProfileForm(instance=request.user)
@@ -97,7 +98,7 @@ def instructor_dashboard(request):
     if not request.user.is_instructor:
         return redirect('platform_home')
     courses = Course.objects.filter(instructor=request.user).order_by('-created_at')
-    wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
+    wallet, _created = InstructorWallet.objects.get_or_create(instructor=request.user)
     recent_sales = (Payment.objects.filter(course__instructor=request.user,
                                             status=Payment.Status.SUCCEEDED)
                      .select_related('course', 'student').order_by('-created_at')[:5])
@@ -150,7 +151,7 @@ def _reenter_review_if_published(request, course):
         course.status = Course.Status.PENDING_REVIEW
         course.rejection_reason = ''
         course.save()
-        messages.info(request, f'{course.title} was live, so this change has been resubmitted for admin review.')
+        messages.info(request, _('%(title)s was live, so this change has been resubmitted for admin review.') % {'title': course.title})
 
 
 # 6. Course Catalog - Browse all published courses
@@ -204,13 +205,13 @@ def enroll_course(request, course_id):
 
     if course.is_free or course.price == 0:
         Enrollment.objects.create(student=request.user, course=course)
-        messages.success(request, f'You are now enrolled in {course.title}.')
+        messages.success(request, _('You are now enrolled in %(title)s.') % {'title': course.title})
         return redirect('my_learning')
 
     if student_has_access(request.user, course):
         # Active subscriber -- no checkout needed, just unlock the course.
         get_or_create_enrollment(request.user, course)
-        messages.success(request, f'You are now enrolled in {course.title}.')
+        messages.success(request, _('You are now enrolled in %(title)s.') % {'title': course.title})
         return redirect('my_learning')
 
     return redirect('checkout_course', course_id=course.id)
@@ -256,7 +257,7 @@ def checkout_course(request, course_id):
             checkout_url = paymob.initiate_checkout(
                 amount_cents, merchant_order_id, _paymob_billing_data(request.user))
         except requests.RequestException:
-            messages.error(request, 'Unable to start checkout right now. Please try again shortly.')
+            messages.error(request, _('Unable to start checkout right now. Please try again shortly.'))
             return redirect('course_detail', course_id=course.id)
 
         return redirect(checkout_url)
@@ -347,7 +348,7 @@ def _handle_course_payment(transaction_id, obj, course_id, student_id):
             },
         )
         if created:
-            wallet, _ = InstructorWallet.objects.get_or_create(instructor=course.instructor)
+            wallet, _created = InstructorWallet.objects.get_or_create(instructor=course.instructor)
             wallet = InstructorWallet.objects.select_for_update().get(pk=wallet.pk)
             wallet.available_balance += payment.instructor_amount
             wallet.total_earnings += payment.instructor_amount
@@ -477,7 +478,7 @@ def course_player(request, course_id, lecture_id):
     if not has_access and not is_owner_or_admin and not lecture.is_preview:
         if not request.user.is_authenticated:
             return redirect_to_login(request.get_full_path())
-        return HttpResponseForbidden('Enroll in this course to watch this lecture.')
+        return HttpResponseForbidden(_('Enroll in this course to watch this lecture.'))
 
     enrollment = get_or_create_enrollment(request.user, course) if has_access else None
 
@@ -520,7 +521,7 @@ def mark_lecture_complete(request, course_id, lecture_id):
     enrollment = get_object_or_404(Enrollment, student=request.user, course=course)
 
     if request.method == 'POST':
-        progress, _ = LectureProgress.objects.get_or_create(enrollment=enrollment, lecture=lecture)
+        progress, _created = LectureProgress.objects.get_or_create(enrollment=enrollment, lecture=lecture)
         progress.completed = True
         progress.completed_at = timezone.now()
         progress.save()
@@ -603,7 +604,7 @@ def submit_homework(request, course_id, lecture_id):
             new_submission.student = request.user
             new_submission.lecture = lecture
             new_submission.save()
-            messages.success(request, 'Homework submitted.')
+            messages.success(request, _('Homework submitted.'))
             return redirect('course_player', course_id=course.id, lecture_id=lecture.id)
     else:
         form = SubmissionForm(instance=submission)
@@ -652,12 +653,12 @@ def ai_coach_send(request):
     try:
         text = json.loads(request.body).get('message', '').strip()
     except (ValueError, json.JSONDecodeError):
-        return JsonResponse({'error': 'Malformed request.'}, status=400)
+        return JsonResponse({'error': _('Malformed request.')}, status=400)
 
     if not text:
-        return JsonResponse({'error': 'Message cannot be empty.'}, status=400)
+        return JsonResponse({'error': _('Message cannot be empty.')}, status=400)
     if len(text) > 6000:
-        return JsonResponse({'error': 'That message is too long -- please shorten it.'}, status=400)
+        return JsonResponse({'error': _('That message is too long -- please shorten it.')}, status=400)
 
     conversation = AIConversation.objects.filter(student=request.user).first()
     if conversation is None:
@@ -827,7 +828,7 @@ def edit_course(request, course_id):
             if was_published:
                 _reenter_review_if_published(request, course)
             else:
-                messages.success(request, f'{course.title} updated.')
+                messages.success(request, _('%(title)s updated.') % {'title': course.title})
             return redirect('instructor_dashboard')
     else:
         form = CourseCreationForm(instance=course)
@@ -853,19 +854,19 @@ def delete_course(request, course_id):
             course.save()
             messages.success(
                 request,
-                f'{course.title} has enrollment or payment history, so it has been archived '
-                'instead of deleted.')
+                _('%(title)s has enrollment or payment history, so it has been archived '
+                  'instead of deleted.') % {'title': course.title})
         else:
             try:
                 course.delete()
-                messages.success(request, f'{course.title} has been deleted.')
+                messages.success(request, _('%(title)s has been deleted.') % {'title': course.title})
             except ProtectedError:
                 course.status = Course.Status.ARCHIVED
                 course.save()
                 messages.success(
                     request,
-                    f'{course.title} has watch-time or revenue history, so it has been archived '
-                    'instead of deleted.')
+                    _('%(title)s has watch-time or revenue history, so it has been archived '
+                      'instead of deleted.') % {'title': course.title})
     return redirect('instructor_dashboard')
 
 
@@ -917,8 +918,8 @@ def delete_module(request, course_id, module_id):
         except ProtectedError:
             messages.error(
                 request,
-                f'"{module.title}" has watch-time history on one of its lectures and cannot be '
-                'deleted.')
+                _('"%(title)s" has watch-time history on one of its lectures and cannot be '
+                  'deleted.') % {'title': module.title})
     return redirect('manage_modules', course_id=course.id)
 
 
@@ -978,7 +979,7 @@ def delete_lecture(request, lecture_id):
             _reenter_review_if_published(request, course)
         except ProtectedError:
             messages.error(
-                request, f'"{lecture.title}" has watch-time history and cannot be deleted.')
+                request, _('"%(title)s" has watch-time history and cannot be deleted.') % {'title': lecture.title})
     return redirect('manage_lectures', course_id=course_id, module_id=module_id)
 
 
@@ -993,12 +994,12 @@ def create_bunny_video(request, lecture_id):
     lecture = get_object_or_404(Lecture, id=lecture_id, module__course__instructor=request.user)
 
     if not bunny.is_configured():
-        return JsonResponse({'error': 'Video hosting is not configured.'}, status=503)
+        return JsonResponse({'error': _('Video hosting is not configured.')}, status=503)
 
     try:
         video_id = bunny.create_video(f'{lecture.course.title} - {lecture.title}')
     except (bunny.BunnyError, requests.RequestException):
-        return JsonResponse({'error': 'Could not start the upload. Please try again.'}, status=502)
+        return JsonResponse({'error': _('Could not start the upload. Please try again.')}, status=502)
 
     # Replacing an existing video: point the lecture at the new GUID. The old
     # Bunny video is orphaned rather than deleted -- harmless, and avoids a
@@ -1065,14 +1066,15 @@ def grade_submission(request, submission_id):
     submission = get_object_or_404(
         Submission, id=submission_id, lecture__module__course__instructor=request.user)
     if submission.is_graded:
-        return HttpResponseForbidden('This submission has already been graded.')
+        return HttpResponseForbidden(_('This submission has already been graded.'))
     if request.method == 'POST':
         form = GradeForm(request.POST, instance=submission)
         if form.is_valid():
             graded = form.save(commit=False)
             graded.graded_at = timezone.now()
             graded.save()
-            messages.success(request, f'Graded {submission.student.username}\'s submission.')
+            messages.success(
+                request, _("Graded %(username)s's submission.") % {'username': submission.student.username})
     return redirect('course_submissions', course_id=submission.lecture.module.course_id)
 
 
@@ -1081,7 +1083,7 @@ def grade_submission(request, submission_id):
 def instructor_wallet(request):
     if not request.user.is_instructor:
         return redirect('platform_home')
-    wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
+    wallet, _created = InstructorWallet.objects.get_or_create(instructor=request.user)
     transactions = wallet.transactions.all()
     payouts = wallet.payouts.all()
     revenue_distributions = (
@@ -1114,7 +1116,7 @@ PAYOUT_COOLDOWN = timedelta(days=7)
 def request_payout(request):
     if not request.user.is_instructor:
         return redirect('platform_home')
-    wallet, _ = InstructorWallet.objects.get_or_create(instructor=request.user)
+    wallet, _created = InstructorWallet.objects.get_or_create(instructor=request.user)
 
     if request.method == 'POST':
         last_request = wallet.payouts.order_by('-requested_at').first()
@@ -1122,8 +1124,8 @@ def request_payout(request):
             next_available = last_request.requested_at + PAYOUT_COOLDOWN
             messages.error(
                 request,
-                f'You can request a payout once a week. Next available: '
-                f'{next_available.strftime("%b %d, %Y")}.')
+                _('You can request a payout once a week. Next available: %(date)s.')
+                % {'date': next_available.strftime("%b %d, %Y")})
             return redirect('instructor_wallet')
 
         form = PayoutRequestForm(request.POST)
@@ -1138,11 +1140,11 @@ def request_payout(request):
                     payout = form.save(commit=False)
                     payout.wallet = wallet
                     payout.save()
-                    messages.success(request, 'Payout request submitted.')
+                    messages.success(request, _('Payout request submitted.'))
                 else:
-                    messages.error(request, 'Payout amount cannot exceed your available balance.')
+                    messages.error(request, _('Payout amount cannot exceed your available balance.'))
         else:
-            messages.error(request, 'Please enter a valid payout amount.')
+            messages.error(request, _('Please enter a valid payout amount.'))
 
     return redirect('instructor_wallet')
 
@@ -1201,7 +1203,7 @@ def admin_dashboard(request):
 def run_subscription_distribution(request):
     if request.method == 'POST':
         call_command('distribute_subscription_revenue')
-        messages.success(request, 'Subscription revenue distribution ran successfully.')
+        messages.success(request, _('Subscription revenue distribution ran successfully.'))
     return redirect('admin_subscription_revenue')
 
 
@@ -1238,7 +1240,7 @@ def approve_course(request, course_id):
         course.status = Course.Status.PUBLISHED
         course.rejection_reason = ''
         course.save()
-        messages.success(request, f'{course.title} approved and published.')
+        messages.success(request, _('%(title)s approved and published.') % {'title': course.title})
     return redirect('course_approval_queue')
 
 
@@ -1249,7 +1251,7 @@ def reject_course(request, course_id):
         course.status = Course.Status.REJECTED
         course.rejection_reason = request.POST.get('reason', '')
         course.save()
-        messages.success(request, f'{course.title} rejected.')
+        messages.success(request, _('%(title)s rejected.') % {'title': course.title})
     return redirect('course_approval_queue')
 
 

@@ -8,6 +8,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.template.defaultfilters import slugify
 from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 
 from .money import SUBSCRIPTION_INSTRUCTOR_SHARE, calculate_split, get_instructor_share
 
@@ -50,7 +51,7 @@ class Track(models.Model):
     name = models.CharField(max_length=100, unique=True)
     slug = models.SlugField(max_length=120, unique=True, blank=True)
     description = models.TextField(blank=True)
-    icon = models.CharField(max_length=50, blank=True, help_text='e.g. a Font Awesome class name')
+    icon = models.CharField(max_length=50, blank=True, help_text=_('e.g. a Font Awesome class name'))
     cover_image = models.ImageField(upload_to='track_covers/', blank=True, null=True)
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
@@ -77,7 +78,7 @@ class TrackRoadmapStep(models.Model):
     track = models.ForeignKey(Track, on_delete=models.CASCADE, related_name='roadmap_steps')
     course = models.ForeignKey('Course', on_delete=models.SET_NULL, null=True, blank=True,
                                 related_name='roadmap_steps')
-    title = models.CharField(max_length=255, help_text='Used until a course is linked, or if none ever is.')
+    title = models.CharField(max_length=255, help_text=_('Used until a course is linked, or if none ever is.'))
     order = models.PositiveIntegerField(default=0)
     is_optional = models.BooleanField(default=False)
 
@@ -94,24 +95,24 @@ class TrackRoadmapStep(models.Model):
 
 class Course(models.Model):
     class Level(models.TextChoices):
-        BEGINNER = 'beginner', 'Beginner'
-        INTERMEDIATE = 'intermediate', 'Intermediate'
-        ADVANCED = 'advanced', 'Advanced'
+        BEGINNER = 'beginner', _('Beginner')
+        INTERMEDIATE = 'intermediate', _('Intermediate')
+        ADVANCED = 'advanced', _('Advanced')
 
     class ProductionType(models.TextChoices):
-        FULL = 'full', 'Full production by instructor'
-        SCRIPT_ONLY = 'script_only', 'Script only (platform produces)'
+        FULL = 'full', _('Full production by instructor')
+        SCRIPT_ONLY = 'script_only', _('Script only (platform produces)')
 
     class Status(models.TextChoices):
-        DRAFT = 'draft', 'Draft'
-        PENDING_REVIEW = 'pending_review', 'Pending Review'
-        PUBLISHED = 'published', 'Published'
-        REJECTED = 'rejected', 'Rejected'
+        DRAFT = 'draft', _('Draft')
+        PENDING_REVIEW = 'pending_review', _('Pending Review')
+        PUBLISHED = 'published', _('Published')
+        REJECTED = 'rejected', _('Rejected')
         # "Deleted" from the instructor's point of view, but the row stays --
         # on_delete=PROTECT on Payment/RevenueDistribution/WatchEvent and the
         # explicit Enrollment check in delete_course() mean a course with any
         # money or watch-time history can never be hard-deleted.
-        ARCHIVED = 'archived', 'Archived'
+        ARCHIVED = 'archived', _('Archived')
 
     instructor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -142,7 +143,7 @@ class Course(models.Model):
     rejection_reason = models.TextField(blank=True, default='')
 
     thumbnail = models.ImageField(upload_to='course_thumbnails/', blank=True, null=True)
-    ai_script = models.TextField(help_text='The script for AI video generation', blank=True, null=True)
+    ai_script = models.TextField(help_text=_('The script for AI video generation'), blank=True, null=True)
 
     rating = models.DecimalField(max_digits=3, decimal_places=2, default=Decimal('0.00'))
     students_count = models.PositiveIntegerField(default=0)
@@ -172,7 +173,7 @@ class Course(models.Model):
             previous = Course.objects.only('production_type').get(pk=self.pk)
             if previous.production_type != self.production_type and self.has_successful_sale():
                 raise ValidationError(
-                    "production_type is read-only once a course has its first successful sale."
+                    _("production_type is read-only once a course has its first successful sale.")
                 )
         super().save(*args, **kwargs)
 
@@ -191,9 +192,9 @@ class Module(models.Model):
 
 class Lecture(models.Model):
     class ContentType(models.TextChoices):
-        VIDEO = 'video', 'Video'
-        ARTICLE = 'article', 'Article'
-        QUIZ = 'quiz', 'Quiz'
+        VIDEO = 'video', _('Video')
+        ARTICLE = 'article', _('Article')
+        QUIZ = 'quiz', _('Quiz')
 
     module = models.ForeignKey(Module, on_delete=models.CASCADE, related_name='lectures', null=True)
     title = models.CharField(max_length=255)
@@ -210,9 +211,9 @@ class Lecture(models.Model):
     video_url = models.URLField(blank=True, null=True)
     video_file = models.FileField(upload_to='lecture_videos/', blank=True, null=True)
     duration_seconds = models.PositiveIntegerField(default=0)
-    is_preview = models.BooleanField(default=False, help_text='Viewable for free without enrollment')
+    is_preview = models.BooleanField(default=False, help_text=_('Viewable for free without enrollment'))
     accepts_submission = models.BooleanField(
-        default=False, help_text='Students can upload homework for this lecture')
+        default=False, help_text=_('Students can upload homework for this lecture'))
     order = models.PositiveIntegerField(default=0)
     ai_generated_script = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -237,9 +238,9 @@ class Lecture(models.Model):
 class Resource(models.Model):
     lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='resources')
     file = models.FileField(upload_to='lecture_resources/',
-                             help_text='Any file: PDF, zip, image, audio, slides, etc.')
+                             help_text=_('Any file: PDF, zip, image, audio, slides, etc.'))
     title = models.CharField(max_length=255, blank=True)
-    file_size = models.PositiveIntegerField(default=0, help_text='Size in bytes')
+    file_size = models.PositiveIntegerField(default=0, help_text=_('Size in bytes'))
 
     def __str__(self):
         return self.title or self.file.name
@@ -249,7 +250,7 @@ class Submission(models.Model):
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='submissions')
     lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE, related_name='submissions')
     submitted_file = models.FileField(upload_to='submissions/', blank=True, null=True)
-    submission_link = models.URLField(blank=True, null=True, help_text='Link to Google Drive, GitHub, etc.')
+    submission_link = models.URLField(blank=True, null=True, help_text=_('Link to Google Drive, GitHub, etc.'))
     note = models.TextField(blank=True, null=True)
     grade = models.CharField(max_length=50, blank=True, null=True)
     feedback = models.TextField(blank=True, null=True)
@@ -274,10 +275,10 @@ class Submission(models.Model):
 
 class Payment(models.Model):
     class Status(models.TextChoices):
-        PENDING = 'pending', 'Pending'
-        SUCCEEDED = 'succeeded', 'Succeeded'
-        FAILED = 'failed', 'Failed'
-        REFUNDED = 'refunded', 'Refunded'
+        PENDING = 'pending', _('Pending')
+        SUCCEEDED = 'succeeded', _('Succeeded')
+        FAILED = 'failed', _('Failed')
+        REFUNDED = 'refunded', _('Refunded')
 
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
                                  related_name='payments')
@@ -329,7 +330,7 @@ class Payment(models.Model):
             for f in ('total_amount', 'instructor_amount',
                       'platform_amount', 'instructor_share_percentage'):
                 if getattr(self, f) != getattr(frozen, f):
-                    raise ValidationError(f"'{f}' is immutable after creation.")
+                    raise ValidationError(_("'%(field)s' is immutable after creation.") % {'field': f})
         super().save(*args, **kwargs)
 
 
@@ -370,7 +371,7 @@ class Enrollment(models.Model):
 
     def issue_certificate_if_complete(self):
         if self.is_complete():
-            certificate, _ = Certificate.objects.get_or_create(enrollment=self)
+            certificate, _created = Certificate.objects.get_or_create(enrollment=self)
             return certificate
         return None
 
@@ -406,10 +407,10 @@ class InstructorWallet(models.Model):
 
 class WalletTransaction(models.Model):
     class Type(models.TextChoices):
-        SALE_CREDIT = 'sale_credit', 'Sale Credit'
-        WITHDRAWAL = 'withdrawal', 'Withdrawal'
-        ADJUSTMENT = 'adjustment', 'Adjustment'
-        REFUND_DEBIT = 'refund_debit', 'Refund Debit'
+        SALE_CREDIT = 'sale_credit', _('Sale Credit')
+        WITHDRAWAL = 'withdrawal', _('Withdrawal')
+        ADJUSTMENT = 'adjustment', _('Adjustment')
+        REFUND_DEBIT = 'refund_debit', _('Refund Debit')
 
     wallet = models.ForeignKey(InstructorWallet, on_delete=models.CASCADE, related_name='transactions')
     type = models.CharField(max_length=20, choices=Type.choices)
@@ -428,19 +429,19 @@ class WalletTransaction(models.Model):
 
     def save(self, *args, **kwargs):
         if not self._state.adding:
-            raise ValidationError('WalletTransaction rows are append-only and cannot be modified.')
+            raise ValidationError(_('WalletTransaction rows are append-only and cannot be modified.'))
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        raise ValidationError('WalletTransaction rows are append-only and cannot be deleted.')
+        raise ValidationError(_('WalletTransaction rows are append-only and cannot be deleted.'))
 
 
 class Payout(models.Model):
     class Status(models.TextChoices):
-        REQUESTED = 'requested', 'Requested'
-        APPROVED = 'approved', 'Approved'
-        PAID = 'paid', 'Paid'
-        REJECTED = 'rejected', 'Rejected'
+        REQUESTED = 'requested', _('Requested')
+        APPROVED = 'approved', _('Approved')
+        PAID = 'paid', _('Paid')
+        REJECTED = 'rejected', _('Rejected')
 
     wallet = models.ForeignKey(InstructorWallet, on_delete=models.CASCADE, related_name='payouts')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -461,8 +462,8 @@ class Plan(models.Model):
     """An all-access subscription tier. Model, not a settings constant, so
     pricing is admin-editable without a deploy."""
     class Interval(models.TextChoices):
-        MONTHLY = 'monthly', 'Monthly'
-        ANNUAL = 'annual', 'Annual'
+        MONTHLY = 'monthly', _('Monthly')
+        ANNUAL = 'annual', _('Annual')
 
     name = models.CharField(max_length=100)
     interval = models.CharField(max_length=20, choices=Interval.choices, default=Interval.ANNUAL)
@@ -480,9 +481,9 @@ class Plan(models.Model):
 
 class Subscription(models.Model):
     class Status(models.TextChoices):
-        ACTIVE = 'active', 'Active'
-        EXPIRED = 'expired', 'Expired'
-        CANCELED = 'canceled', 'Canceled'
+        ACTIVE = 'active', _('Active')
+        EXPIRED = 'expired', _('Expired')
+        CANCELED = 'canceled', _('Canceled')
 
     student = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
                                  related_name='subscriptions')
@@ -534,9 +535,9 @@ class SubscriptionPeriod(models.Model):
     a snapshot: the subscription's own price can't retroactively change what
     was actually paid."""
     class Status(models.TextChoices):
-        OPEN = 'open', 'Open'
-        DISTRIBUTED = 'distributed', 'Distributed'
-        CANCELED = 'canceled', 'Canceled'
+        OPEN = 'open', _('Open')
+        DISTRIBUTED = 'distributed', _('Distributed')
+        CANCELED = 'canceled', _('Canceled')
 
     subscription = models.ForeignKey(Subscription, on_delete=models.PROTECT, related_name='periods')
     period_start = models.DateTimeField()
@@ -631,8 +632,8 @@ class AIConversation(models.Model):
 
 class AIMessage(models.Model):
     class Role(models.TextChoices):
-        USER = 'user', 'User'
-        ASSISTANT = 'assistant', 'Assistant'
+        USER = 'user', _('User')
+        ASSISTANT = 'assistant', _('Assistant')
 
     conversation = models.ForeignKey(AIConversation, on_delete=models.CASCADE, related_name='messages')
     role = models.CharField(max_length=10, choices=Role.choices)
