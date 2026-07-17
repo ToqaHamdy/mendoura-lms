@@ -15,8 +15,9 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from django.utils.translation import override as translation_override
 
-from . import ai_coach, paymob
+from . import ai_coach, ai_translate, paymob
 from .models import (
     AIConversation, AIMessage, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
@@ -706,6 +707,91 @@ class TrackCrudTests(TestCase):
         self.client.post(reverse('toggle_track_active', args=[track.id]))
         track.refresh_from_db()
         self.assertFalse(track.is_active)
+
+
+class TrackTranslationTests(TestCase):
+    """Track.save() auto-translates name/description via the AI API. The
+    network call itself (ai_translate.translate_fields) is mocked -- these
+    tests are about the save()-time trigger/staleness/fallback logic, not
+    the Anthropic integration (that's covered by mocking, same as
+    AICoachTests)."""
+
+    def test_without_ai_configured_save_succeeds_and_falls_back_to_source(self):
+        with override_settings(AI_API_KEY=''):
+            track = Track.objects.create(name='Robotics', description='Build robots.')
+        self.assertEqual(track.name_translations, {})
+        self.assertEqual(track.translated_name, 'Robotics')
+        self.assertEqual(track.translated_description, 'Build robots.')
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_save_populates_translations_for_every_active_language(self, mock_translate):
+        mock_translate.return_value = {
+            'name': {'ar': 'الروبوتات', 'fr': 'Robotique', 'es': 'Robótica'},
+            'description': {'ar': 'ابنِ روبوتات.', 'fr': 'Construisez des robots.', 'es': 'Construye robots.'},
+        }
+        track = Track.objects.create(name='Robotics', description='Build robots.')
+
+        mock_translate.assert_called_once()
+        fields_arg, target_languages_arg = mock_translate.call_args.args
+        self.assertEqual(fields_arg, {'name': 'Robotics', 'description': 'Build robots.'})
+        self.assertEqual(set(target_languages_arg), {'ar', 'fr', 'es'})
+
+        self.assertEqual(track.name_translations['ar'], 'الروبوتات')
+        self.assertEqual(track.name_translations['fr'], 'Robotique')
+        self.assertEqual(track.name_translations['es'], 'Robótica')
+        self.assertEqual(track.description_translations['ar'], 'ابنِ روبوتات.')
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_translated_name_resolves_active_language_and_falls_back_to_english(self, mock_translate):
+        mock_translate.return_value = {
+            'name': {'ar': 'الروبوتات', 'fr': 'Robotique', 'es': 'Robótica'},
+            'description': {'ar': '', 'fr': '', 'es': ''},
+        }
+        track = Track.objects.create(name='Robotics', description='')
+
+        with translation_override('ar'):
+            self.assertEqual(track.translated_name, 'الروبوتات')
+        with translation_override('fr'):
+            self.assertEqual(track.translated_name, 'Robotique')
+        with translation_override('en'):
+            self.assertEqual(track.translated_name, 'Robotics')
+        # A language with no translation available (or none active) falls back too.
+        with translation_override('de'):
+            self.assertEqual(track.translated_name, 'Robotics')
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_unchanged_name_does_not_retrigger_translation_on_next_save(self, mock_translate):
+        mock_translate.return_value = {'name': {'ar': 'أ', 'fr': 'f', 'es': 'e'}, 'description': {}}
+        track = Track.objects.create(name='Robotics', description='')
+        self.assertEqual(mock_translate.call_count, 1)
+
+        track.order = 5
+        track.save()
+        self.assertEqual(mock_translate.call_count, 1)
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_changed_name_retriggers_translation(self, mock_translate):
+        mock_translate.return_value = {'name': {'ar': 'أ', 'fr': 'f', 'es': 'e'}, 'description': {}}
+        track = Track.objects.create(name='Robotics', description='')
+        self.assertEqual(mock_translate.call_count, 1)
+
+        mock_translate.return_value = {'name': {'ar': 'ب', 'fr': 'g', 'es': 'h'}, 'description': {}}
+        track.name = 'Advanced Robotics'
+        track.save()
+        self.assertEqual(mock_translate.call_count, 2)
+        self.assertEqual(track.name_translations['ar'], 'ب')
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_translation_error_does_not_break_save(self, mock_translate):
+        mock_translate.side_effect = ai_translate.TranslationError('boom')
+        track = Track.objects.create(name='Robotics', description='Build robots.')
+        self.assertEqual(track.name_translations, {})
+        self.assertEqual(track.translated_name, 'Robotics')
 
 
 TEST_HMAC_SECRET = 'test-hmac-secret'
@@ -1771,3 +1857,21 @@ class AICoachClientTests(TestCase):
         with override_settings(AI_API_KEY=''):
             with self.assertRaises(ai_coach.AICoachError):
                 ai_coach.send_message([{'role': 'user', 'content': 'hi'}])
+
+
+class AITranslateClientTests(TestCase):
+    def test_is_configured_reflects_setting(self):
+        with override_settings(AI_API_KEY=''):
+            self.assertFalse(ai_translate.is_configured())
+        with override_settings(AI_API_KEY='some-key'):
+            self.assertTrue(ai_translate.is_configured())
+
+    def test_translate_fields_raises_when_not_configured(self):
+        with override_settings(AI_API_KEY=''):
+            with self.assertRaises(ai_translate.TranslationError):
+                ai_translate.translate_fields({'name': 'Robotics'}, ['ar'])
+
+    @override_settings(AI_API_KEY='test-key')
+    def test_translate_fields_returns_empty_without_calling_api_when_nothing_to_translate(self):
+        self.assertEqual(ai_translate.translate_fields({}, ['ar']), {})
+        self.assertEqual(ai_translate.translate_fields({'name': 'Robotics'}, []), {})

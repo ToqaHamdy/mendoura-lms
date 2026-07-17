@@ -50,7 +50,7 @@
               {% for parent in tracks_menu %}
                 <button type="button" role="menuitem" tabindex="-1" data-target="track-children-{{ parent.id }}"
                         class="track-parent-btn w-full flex items-center justify-between gap-2 px-4 py-2.5 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800 {% if forloop.first %}bg-gray-50 dark:bg-gray-800 text-brand-600{% endif %}">
-                  <span><i class="fa-solid {{ parent.icon|default:'fa-layer-group' }} mr-2 text-brand-600"></i>{{ parent.name }}</span>
+                  <span><i class="fa-solid {{ parent.icon|default:'fa-layer-group' }} mr-2 text-brand-600"></i>{{ parent.translated_name }}</span>
                   <i class="fa-solid fa-chevron-right text-[10px] text-gray-300"></i>
                 </button>
               {% endfor %}
@@ -60,9 +60,9 @@
                 <div id="track-children-{{ parent.id }}" class="track-children-panel {% if not forloop.first %}hidden{% endif %} grid grid-cols-2 gap-1">
                   {% for child in parent.children.all %}
                     <a href="{% url 'track_detail' child.slug %}" role="menuitem"
-                       class="px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-brand-600">{{ child.name }}</a>
+                       class="px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800 hover:text-brand-600">{{ child.translated_name }}</a>
                   {% empty %}
-                    <p class="text-xs text-gray-400 col-span-2">No tracks yet.</p>
+                    <p class="text-xs text-gray-400 col-span-2">{% trans "No tracks yet." %}</p>
                   {% endfor %}
                 </div>
               {% endfor %}
@@ -180,11 +180,11 @@
         {% for parent in tracks_menu %}
           <div>
             <button type="button" class="mobile-parent-toggle w-full flex items-center justify-between py-1.5 text-sm text-gray-600 dark:text-gray-300">
-              {{ parent.name }} <i class="fa-solid fa-chevron-down text-[10px] transition-transform"></i>
+              {{ parent.translated_name }} <i class="fa-solid fa-chevron-down text-[10px] transition-transform"></i>
             </button>
             <div class="hidden pl-3 space-y-1 pb-1">
               {% for child in parent.children.all %}
-                <a href="{% url 'track_detail' child.slug %}" class="block py-1 text-sm text-gray-500 dark:text-gray-400">{{ child.name }}</a>
+                <a href="{% url 'track_detail' child.slug %}" class="block py-1 text-sm text-gray-500 dark:text-gray-400">{{ child.translated_name }}</a>
               {% endfor %}
             </div>
           </div>

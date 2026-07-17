@@ -9,7 +9,9 @@ from django.contrib.auth.models import AbstractUser
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.utils.translation import get_language
 
+from . import ai_translate
 from .money import SUBSCRIPTION_INSTRUCTOR_SHARE, calculate_split, get_instructor_share
 
 
@@ -41,7 +43,58 @@ def _unique_slugify(instance, base_value, slug_field='slug'):
     return candidate
 
 
-class Track(models.Model):
+class AutoTranslatedFieldsMixin:
+    """AI-populated per-language JSON translations for a model's designated
+    text fields. The admin/instructor-entered value is always assumed to be
+    written in SOURCE_LANGUAGE (English); on save(), any field whose source
+    text has changed (or whose translations don't yet cover every active
+    non-source language) gets a single batched translation call. Subclasses
+    must define TRANSLATABLE_FIELDS and a `{field}_translations` JSONField
+    for each entry.
+
+    Never blocks a save: if AI_API_KEY isn't configured, or the translation
+    call fails for any reason, the record just saves with whatever
+    translations it already had -- `_translated()` always has the English
+    source text to fall back to."""
+    SOURCE_LANGUAGE = 'en'
+    TRANSLATABLE_FIELDS = ()
+
+    def _translated(self, field):
+        translations = getattr(self, f'{field}_translations') or {}
+        lang = get_language() or self.SOURCE_LANGUAGE
+        return translations.get(lang) or getattr(self, field)
+
+    def _autotranslate(self):
+        target_languages = [code for code, _label in settings.LANGUAGES if code != self.SOURCE_LANGUAGE]
+        if not target_languages or not ai_translate.is_configured():
+            return
+
+        pending = {}
+        for field in self.TRANSLATABLE_FIELDS:
+            source_value = (getattr(self, field, '') or '').strip()
+            if not source_value:
+                continue
+            translations = getattr(self, f'{field}_translations') or {}
+            stale = translations.get('__source__') != source_value
+            incomplete = any(lang not in translations for lang in target_languages)
+            if stale or incomplete:
+                pending[field] = source_value
+
+        if not pending:
+            return
+
+        try:
+            results = ai_translate.translate_fields(pending, target_languages)
+        except ai_translate.TranslationError:
+            return
+
+        for field, source_value in pending.items():
+            translated = dict(results.get(field) or {})
+            translated['__source__'] = source_value
+            setattr(self, f'{field}_translations', translated)
+
+
+class Track(AutoTranslatedFieldsMixin, models.Model):
     # Self-referencing rather than a separate "Category" model for the top level --
     # a track and its parent are the same kind of thing (name, slug, icon, ordering),
     # just nested. Two levels deep in practice (Tech -> Cybersecurity), but nothing
@@ -56,15 +109,29 @@ class Track(models.Model):
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
+    # Auto-populated by AutoTranslatedFieldsMixin -- {"ar": "...", "fr": "...", "es": "..."}.
+    name_translations = models.JSONField(default=dict, blank=True)
+    description_translations = models.JSONField(default=dict, blank=True)
+    TRANSLATABLE_FIELDS = ('name', 'description')
+
     class Meta:
         ordering = ['order', 'name']
 
     def __str__(self):
         return f'{self.parent.name} / {self.name}' if self.parent else self.name
 
+    @property
+    def translated_name(self):
+        return self._translated('name')
+
+    @property
+    def translated_description(self):
+        return self._translated('description')
+
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = _unique_slugify(self, self.name)
+        self._autotranslate()
         super().save(*args, **kwargs)
 
 
