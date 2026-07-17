@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load static %}
 {% block title %}Edit {{ lecture.title }} - {{ course.title }}{% endblock %}
 
 {% block content %}
@@ -96,7 +97,7 @@
 
 {% block extra_js %}
 {% if bunny_configured %}
-<script src="https://cdn.jsdelivr.net/npm/tus-js-client@4/dist/tus.min.js"></script>
+<script src="{% static 'js/tus.min.js' %}"></script>
 <script>
   (function () {
     const root = document.getElementById('bunny-uploader');
@@ -122,6 +123,12 @@
         creds = await res.json();
       } catch (e) {
         statusEl.textContent = 'Could not start the upload. Please try again.';
+        uploadBtn.disabled = false;
+        return;
+      }
+
+      if (typeof tus === 'undefined') {
+        statusEl.textContent = 'Upload library failed to load. Please refresh the page and try again.';
         uploadBtn.disabled = false;
         return;
       }
