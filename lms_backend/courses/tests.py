@@ -1382,6 +1382,19 @@ class BunnyUploadEndpointTests(TestCase):
         response = self.client.post(reverse('create_bunny_video', args=[self.lecture.id]))
         self.assertEqual(response.status_code, 503)
 
+    @override_settings(BUNNY_LIBRARY_ID='705216', BUNNY_API_KEY='test-api-key')
+    def test_edit_lecture_page_loads_upload_library_locally_not_from_a_cdn(self):
+        # Regression test: the upload button used to depend on tus-js-client
+        # loading from cdn.jsdelivr.net at runtime -- any CDN hiccup (or a
+        # network that blocks it, as we've seen happen with other CDNs this
+        # project used) left the "Upload Video" button silently stuck
+        # disabled with no way to recover short of a page reload. Vendoring
+        # the script removes that single point of failure entirely.
+        self.client.force_login(self.instructor)
+        response = self.client.get(reverse('edit_lecture', args=[self.lecture.id]))
+        self.assertContains(response, '/static/js/tus.min.js')
+        self.assertNotContains(response, 'cdn.jsdelivr.net')
+
 
 class BunnyWebhookTests(TestCase):
     def setUp(self):
