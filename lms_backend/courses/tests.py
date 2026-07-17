@@ -6,11 +6,15 @@ from datetime import timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.contrib.auth.tokens import default_token_generator
+from django.core import mail
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
 
 from . import paymob
 from .models import (
@@ -1509,3 +1513,68 @@ class GradeSubmissionTests(TestCase):
         response = self.client.get(reverse('course_submissions', args=[self.course.id]))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'gr_stud')
+
+
+class PasswordResetFlowTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='pw_reset_user', password='oldpassword123', email='reset@example.com')
+
+    def _confirm_url(self, user):
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        return reverse('password_reset_confirm', args=[uidb64, token]), uidb64, token
+
+    def test_reset_form_page_loads(self):
+        response = self.client.get(reverse('password_reset'))
+        self.assertEqual(response.status_code, 200)
+
+    def test_valid_email_sends_reset_email(self):
+        response = self.client.post(reverse('password_reset'), {'email': 'reset@example.com'})
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].subject, 'Reset your Mendoura password')
+        self.assertIn('reset@example.com', mail.outbox[0].to)
+        # Multipart: plain-text body plus an HTML alternative.
+        self.assertTrue(any(content_type == 'text/html' for _, content_type in mail.outbox[0].alternatives))
+
+    def test_unknown_email_does_not_leak_account_existence(self):
+        response = self.client.post(reverse('password_reset'), {'email': 'nobody@example.com'})
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_valid_token_allows_setting_new_password(self):
+        url, uidb64, token = self._confirm_url(self.user)
+        # First GET redirects to the token-consumed session-keyed URL Django's view uses.
+        response = self.client.get(url, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Set a new password')
+
+        response = self.client.post(response.request['PATH_INFO'], {
+            'new_password1': 'brandnewpassword456',
+            'new_password2': 'brandnewpassword456',
+        })
+        self.assertRedirects(response, reverse('password_reset_complete'))
+
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('brandnewpassword456'))
+
+    def test_invalid_token_shows_expired_message(self):
+        uidb64 = urlsafe_base64_encode(force_bytes(self.user.pk))
+        url = reverse('password_reset_confirm', args=[uidb64, 'bogus-token'])
+        response = self.client.get(url, follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Link expired')
+
+    def test_reused_token_cannot_reset_password_twice(self):
+        url, uidb64, token = self._confirm_url(self.user)
+        response = self.client.get(url, follow=True)
+        set_password_url = response.request['PATH_INFO']
+        self.client.post(set_password_url, {
+            'new_password1': 'firstnewpassword789',
+            'new_password2': 'firstnewpassword789',
+        })
+        # Reusing the original emailed link a second time must not work --
+        # the token was already consumed by the first successful reset.
+        response = self.client.get(url, follow=True)
+        self.assertContains(response, 'Link expired')
