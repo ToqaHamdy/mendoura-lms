@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load i18n %}
 {% block title %}{{ track.name }} - Mendoura{% endblock %}
 
 {% block content %}
@@ -6,7 +7,7 @@
 
   <a href="{% if track.parent %}{% url 'track_detail' track.parent.slug %}{% else %}{% url 'track_list' %}{% endif %}"
      class="text-sm text-brand-600 hover:underline">
-    <i class="fa-solid fa-arrow-left"></i> {% if track.parent %}{{ track.parent.name }}{% else %}All Tracks{% endif %}
+    <i class="fa-solid fa-arrow-left"></i> {% if track.parent %}{{ track.parent.name }}{% else %}{% trans "All Tracks" %}{% endif %}
   </a>
 
   <div class="mt-4 mb-10 flex items-center gap-4">
@@ -32,7 +33,7 @@
         </a>
       {% empty %}
         <div class="col-span-full bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center">
-          <p class="text-lg font-semibold">No tracks in this category yet</p>
+          <p class="text-lg font-semibold">{% trans "No tracks in this category yet" %}</p>
         </div>
       {% endfor %}
     </div>
@@ -40,7 +41,7 @@
   {% else %}
     {# Leaf track: roadmap + published courses #}
     {% if roadmap %}
-      <h2 class="text-xl font-bold mb-6">Track Roadmap</h2>
+      <h2 class="text-xl font-bold mb-6">{% trans "Track Roadmap" %}</h2>
       <div class="mb-14 overflow-x-auto">
         <div class="flex items-start gap-2 min-w-max pb-2">
           {% for node in roadmap %}
@@ -64,9 +65,9 @@
                   {% endif %}
                 {% else %}
                   <span class="text-xs font-semibold mt-2 text-gray-400">{{ node.step.display_title }}</span>
-                  <span class="text-[10px] text-gray-400 mt-0.5">Coming soon</span>
+                  <span class="text-[10px] text-gray-400 mt-0.5">{% trans "Coming soon" %}</span>
                 {% endif %}
-                {% if node.step.is_optional %}<span class="text-[10px] text-gray-400 mt-0.5">Optional</span>{% endif %}
+                {% if node.step.is_optional %}<span class="text-[10px] text-gray-400 mt-0.5">{% trans "Optional" %}</span>{% endif %}
               </div>
               {% if not forloop.last %}
                 <div class="w-10 h-0.5 mt-5 {% if node.state == 'complete' %}bg-brand-600{% else %}bg-gray-200 dark:bg-gray-800{% endif %}"></div>
@@ -77,15 +78,15 @@
       </div>
     {% endif %}
 
-    <h2 class="text-xl font-bold mb-6">Courses</h2>
+    <h2 class="text-xl font-bold mb-6">{% trans "Courses" %}</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {% for course in courses %}
         {% include 'courses/_course_card.html' %}
       {% empty %}
         <div class="col-span-full bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center">
           <i class="fa-solid fa-magnifying-glass text-4xl text-gray-300 mb-4"></i>
-          <p class="text-lg font-semibold">No courses in this track yet</p>
-          <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">Check back soon.</p>
+          <p class="text-lg font-semibold">{% trans "No courses in this track yet" %}</p>
+          <p class="text-gray-500 dark:text-gray-400 text-sm mt-1">{% trans "Check back soon." %}</p>
         </div>
       {% endfor %}
     </div>

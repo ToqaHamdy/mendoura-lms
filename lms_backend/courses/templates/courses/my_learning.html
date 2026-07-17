@@ -1,9 +1,10 @@
 {% extends 'base.html' %}
+{% load i18n %}
 {% block title %}My Learning - Mendoura{% endblock %}
 
 {% block content %}
 <div class="max-w-5xl mx-auto px-6 py-12 animate-fade-in">
-  <h1 class="text-3xl font-extrabold mb-8">My Learning</h1>
+  <h1 class="text-3xl font-extrabold mb-8">{% trans "My Learning" %}</h1>
 
   <div class="space-y-4">
     {% for enrollment in enrollments %}
@@ -11,15 +12,15 @@
         <div class="flex items-center justify-between gap-4">
           <div>
             <h3 class="font-bold text-lg">{{ enrollment.course.title }}</h3>
-            <p class="text-xs text-gray-400 mt-1">Enrolled {{ enrollment.enrolled_at|date:"M d, Y" }}</p>
+            <p class="text-xs text-gray-400 mt-1">{% blocktrans with date=enrollment.enrolled_at|date:"M d, Y" %}Enrolled {{ date }}{% endblocktrans %}</p>
           </div>
           <a href="{% url 'course_detail' enrollment.course.id %}" class="text-sm font-semibold text-brand-600 hover:underline whitespace-nowrap">
-            View Course
+            {% trans "View Course" %}
           </a>
         </div>
         <div class="mt-4">
           <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-            <span>Progress</span>
+            <span>{% trans "Progress" %}</span>
             <span>{{ enrollment.progress_percent }}%</span>
           </div>
           <div class="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
@@ -28,14 +29,14 @@
         </div>
         {% if enrollment.is_complete %}
           <a href="{% url 'certificate_view' enrollment.certificate.uuid %}" class="inline-block mt-4 text-sm font-semibold text-brand-600 hover:underline">
-            <i class="fa-solid fa-certificate mr-1"></i> View Certificate
+            <i class="fa-solid fa-certificate mr-1"></i> {% trans "View Certificate" %}
           </a>
         {% endif %}
       </div>
     {% empty %}
       <div class="bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center">
-        <p class="text-lg font-semibold">You haven't enrolled in any courses yet.</p>
-        <a href="{% url 'track_list' %}" class="inline-block mt-4 px-6 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">Browse Tracks</a>
+        <p class="text-lg font-semibold">{% trans "You haven't enrolled in any courses yet." %}</p>
+        <a href="{% url 'track_list' %}" class="inline-block mt-4 px-6 py-2 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700">{% trans "Browse Tracks" %}</a>
       </div>
     {% endfor %}
   </div>
