@@ -30,7 +30,7 @@
           <select name="track" onchange="this.form.submit()" class="w-full mt-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm">
             <option value="">{% trans "All tracks" %}</option>
             {% for t in all_tracks %}
-              <option value="{{ t.slug }}" {% if t.slug == selected_track %}selected{% endif %}>{{ t.name }}</option>
+              <option value="{{ t.slug }}" {% if t.slug == selected_track %}selected{% endif %}>{{ t.translated_name }}</option>
             {% endfor %}
           </select>
         </div>
@@ -73,8 +73,8 @@
                   <i class="fa-solid {{ track.icon|default:'fa-layer-group' }}"></i>
                 </div>
                 <div>
-                  <p class="font-semibold">{{ track.name }}</p>
-                  {% if track.parent %}<p class="text-xs text-gray-400">{{ track.parent.name }}</p>{% endif %}
+                  <p class="font-semibold">{{ track.translated_name }}</p>
+                  {% if track.parent %}<p class="text-xs text-gray-400">{{ track.parent.translated_name }}</p>{% endif %}
                 </div>
               </a>
             {% endfor %}

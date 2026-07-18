@@ -7,7 +7,7 @@
 
   <a href="{% if track.parent %}{% url 'track_detail' track.parent.slug %}{% else %}{% url 'track_list' %}{% endif %}"
      class="text-sm text-brand-600 hover:underline">
-    <i class="fa-solid fa-arrow-left"></i> {% if track.parent %}{{ track.parent.name }}{% else %}{% trans "All Tracks" %}{% endif %}
+    <i class="fa-solid fa-arrow-left"></i> {% if track.parent %}{{ track.parent.translated_name }}{% else %}{% trans "All Tracks" %}{% endif %}
   </a>
 
   <div class="mt-4 mb-10 flex items-center gap-4">
@@ -15,8 +15,8 @@
       <i class="fa-solid {{ track.icon|default:'fa-layer-group' }}"></i>
     </div>
     <div>
-      <h1 class="text-3xl font-extrabold">{{ track.name }}</h1>
-      {% if track.description %}<p class="text-gray-500 dark:text-gray-400 mt-1">{{ track.description }}</p>{% endif %}
+      <h1 class="text-3xl font-extrabold">{{ track.translated_name }}</h1>
+      {% if track.description %}<p class="text-gray-500 dark:text-gray-400 mt-1">{{ track.translated_description }}</p>{% endif %}
     </div>
   </div>
 
@@ -28,8 +28,8 @@
           <div class="w-12 h-12 rounded-xl bg-brand-50 dark:bg-brand-600/10 flex items-center justify-center text-brand-600 dark:text-brand-400 text-xl mb-4">
             <i class="fa-solid {{ child.icon|default:'fa-layer-group' }}"></i>
           </div>
-          <h3 class="font-bold text-lg mb-1">{{ child.name }}</h3>
-          <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ child.description }}</p>
+          <h3 class="font-bold text-lg mb-1">{{ child.translated_name }}</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">{{ child.translated_description }}</p>
         </a>
       {% empty %}
         <div class="col-span-full bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 rounded-2xl p-12 text-center">
