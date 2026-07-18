@@ -1755,17 +1755,17 @@ class AICoachTests(TestCase):
         self.assertContains(response, 'Welcome to Mendoura AI Coach')
         self.assertTrue(AIConversation.objects.filter(student=self.student).exists())
 
-    def test_page_shows_sandbox_mode_badge_when_api_key_missing(self):
+    def test_page_shows_sandbox_badge_when_api_key_missing(self):
         self.client.force_login(self.student)
         with override_settings(AI_API_KEY=''):
             response = self.client.get(reverse('ai_coach'))
-        self.assertContains(response, 'Sandbox Mode')
+        self.assertContains(response, 'Mendoura General AI Coach')
 
     def test_no_sandbox_badge_when_api_key_configured(self):
         self.client.force_login(self.student)
         with override_settings(AI_API_KEY='test-key'):
             response = self.client.get(reverse('ai_coach'))
-        self.assertNotContains(response, 'Sandbox Mode')
+        self.assertNotContains(response, 'Mendoura General AI Coach')
 
     def test_non_student_cannot_post_message(self):
         self.client.force_login(self.instructor)
@@ -1858,7 +1858,7 @@ class AICoachTests(TestCase):
             reverse('ai_coach_send'), data=json.dumps({'message': 'Hey there'}),
             content_type='application/json')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Sandbox Mode', response.json()['reply_html'])
+        self.assertIn('Mendoura General AI Assistant', response.json()['reply_html'])
 
         conversation = AIConversation.objects.get(student=self.student)
         messages = list(conversation.messages.order_by('created_at'))
@@ -1866,13 +1866,31 @@ class AICoachTests(TestCase):
         self.assertEqual(messages[1].role, AIMessage.Role.ASSISTANT)
 
     @override_settings(AI_API_KEY='')
-    def test_send_without_ai_configured_matches_python_keyword(self):
+    def test_send_without_ai_configured_matches_tech_keyword(self):
         self.client.force_login(self.student)
         response = self.client.post(
             reverse('ai_coach_send'), data=json.dumps({'message': 'Can you help me learn Python?'}),
             content_type='application/json')
         self.assertEqual(response.status_code, 200)
-        self.assertIn('Python Learning Path', response.json()['reply_html'])
+        self.assertIn('Modern Software Engineering', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_business_keyword(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'How do I grow my business marketing?'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Elite Entrepreneurship Framework', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_language_keyword(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'I want to learn Arabic'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Language Learning Roadmap', response.json()['reply_html'])
 
     @override_settings(AI_API_KEY='')
     def test_send_without_ai_configured_matches_study_schedule_keyword(self):
@@ -1894,21 +1912,36 @@ class AICoachClientTests(TestCase):
     def test_send_message_returns_sandbox_reply_when_not_configured(self):
         with override_settings(AI_API_KEY=''):
             reply = ai_coach.send_message([{'role': 'user', 'content': 'hi'}])
-        self.assertEqual(reply, ai_coach.SANDBOX_GENERIC_REPLY)
+        self.assertEqual(reply, ai_coach.SANDBOX_GENERAL_REPLY)
 
-    def test_sandbox_reply_matches_python_keywords(self):
-        for keyword in ('python', 'code', 'programming'):
+    def test_sandbox_reply_matches_tech_keywords(self):
+        for keyword in ('python', 'js', 'javascript', 'html', 'code', 'bug', 'web'):
             history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
-            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_PYTHON_GUIDE)
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_TECH_GUIDE)
+
+    def test_sandbox_reply_matches_business_keywords(self):
+        for keyword in ('marketing', 'business', 'sales', 'profit', 'project'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_BUSINESS_FRAMEWORK)
+
+    def test_sandbox_reply_matches_language_keywords(self):
+        for keyword in ('english', 'arabic', 'translation', 'learn'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_LANGUAGE_ROADMAP)
 
     def test_sandbox_reply_matches_study_keywords(self):
         for keyword in ('study', 'schedule', 'exam'):
             history = [{'role': 'user', 'content': f'Help me with my {keyword}'}]
             self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_STUDY_SCHEDULE)
 
-    def test_sandbox_reply_falls_back_to_generic_for_unmatched_text(self):
-        history = [{'role': 'user', 'content': 'What is the meaning of life?'}]
-        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_GENERIC_REPLY)
+    def test_sandbox_reply_matches_general_chitchat_keywords(self):
+        for keyword in ('hi', 'hello', 'help', 'explain', 'how to', 'why', 'what is'):
+            history = [{'role': 'user', 'content': f'{keyword} there'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_GENERAL_REPLY)
+
+    def test_sandbox_reply_falls_back_to_general_for_unmatched_text(self):
+        history = [{'role': 'user', 'content': 'asdfghjkl'}]
+        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_GENERAL_REPLY)
 
     def test_sandbox_reply_uses_most_recent_user_message(self):
         history = [
