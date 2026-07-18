@@ -793,6 +793,41 @@ class TrackTranslationTests(TestCase):
         self.assertEqual(track.name_translations, {})
         self.assertEqual(track.translated_name, 'Robotics')
 
+    @override_settings(AI_API_KEY='')
+    def test_local_fallback_translates_known_track_name_without_ai(self):
+        track = Track.objects.create(name='Cybersecurity')
+        self.assertEqual(track.name_translations['ar'], 'الأمن السيبراني')
+        with translation_override('ar'):
+            self.assertEqual(track.translated_name, 'الأمن السيبراني')
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_local_fallback_fills_gap_when_ai_call_fails(self, mock_translate):
+        mock_translate.side_effect = ai_translate.TranslationError('boom')
+        track = Track.objects.create(name='Web Development')
+        self.assertEqual(track.name_translations['ar'], 'تطوير الويب')
+
+    @override_settings(AI_API_KEY='test-key')
+    @patch('courses.models.ai_translate.translate_fields')
+    def test_real_ai_result_takes_priority_over_local_fallback(self, mock_translate):
+        mock_translate.return_value = {'name': {'ar': 'ترجمة حقيقية', 'fr': 'f', 'es': 'e'}}
+        track = Track.objects.create(name='Tech')
+        # The AI's own Arabic translation wins over the local dictionary entry.
+        self.assertEqual(track.name_translations['ar'], 'ترجمة حقيقية')
+
+    @override_settings(AI_API_KEY='')
+    def test_unmapped_track_name_still_falls_back_to_english_without_ai(self):
+        track = Track.objects.create(name='Robotics')
+        self.assertEqual(track.name_translations, {})
+        self.assertEqual(track.translated_name, 'Robotics')
+
+    @override_settings(AI_API_KEY='')
+    def test_local_fallback_only_covers_arabic_not_french_or_spanish(self):
+        track = Track.objects.create(name='Marketing')
+        self.assertEqual(track.name_translations, {'ar': 'تسويق', '__source__': 'Marketing'})
+        with translation_override('fr'):
+            self.assertEqual(track.translated_name, 'Marketing')
+
 
 TEST_HMAC_SECRET = 'test-hmac-secret'
 

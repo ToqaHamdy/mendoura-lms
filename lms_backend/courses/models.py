@@ -53,11 +53,18 @@ class AutoTranslatedFieldsMixin:
     for each entry.
 
     Never blocks a save: if AI_API_KEY isn't configured, or the translation
-    call fails for any reason, the record just saves with whatever
-    translations it already had -- `_translated()` always has the English
-    source text to fall back to."""
+    call fails for any reason, a subclass-defined LOCAL_TRANSLATIONS
+    dictionary (if any) fills in whatever it knows about, and anything
+    still missing falls back to the English source via `_translated()`."""
     SOURCE_LANGUAGE = 'en'
     TRANSLATABLE_FIELDS = ()
+    # Optional per-model static fallback, keyed by field then by exact
+    # English source text: {"name": {"Cybersecurity": {"ar": "..."}}}.
+    # Used whenever the AI API is unavailable or fails, so a handful of
+    # well-known values (e.g. the seeded track catalog) show up translated
+    # immediately instead of waiting on a real API key. AI results always
+    # take priority over this when both are available.
+    LOCAL_TRANSLATIONS = {}
 
     def _translated(self, field):
         translations = getattr(self, f'{field}_translations') or {}
@@ -66,7 +73,7 @@ class AutoTranslatedFieldsMixin:
 
     def _autotranslate(self):
         target_languages = [code for code, _label in settings.LANGUAGES if code != self.SOURCE_LANGUAGE]
-        if not target_languages or not ai_translate.is_configured():
+        if not target_languages:
             return
 
         pending = {}
@@ -83,13 +90,20 @@ class AutoTranslatedFieldsMixin:
         if not pending:
             return
 
-        try:
-            results = ai_translate.translate_fields(pending, target_languages)
-        except ai_translate.TranslationError:
-            return
+        results = {}
+        if ai_translate.is_configured():
+            try:
+                results = ai_translate.translate_fields(pending, target_languages)
+            except ai_translate.TranslationError:
+                results = {}
 
         for field, source_value in pending.items():
             translated = dict(results.get(field) or {})
+            local_fallback = self.LOCAL_TRANSLATIONS.get(field, {}).get(source_value, {})
+            for lang, text in local_fallback.items():
+                translated.setdefault(lang, text)
+            if not translated:
+                continue
             translated['__source__'] = source_value
             setattr(self, f'{field}_translations', translated)
 
@@ -113,6 +127,24 @@ class Track(AutoTranslatedFieldsMixin, models.Model):
     name_translations = models.JSONField(default=dict, blank=True)
     description_translations = models.JSONField(default=dict, blank=True)
     TRANSLATABLE_FIELDS = ('name', 'description')
+
+    # Hand-written Arabic for the core seeded tracks (see seed_tracks.py) --
+    # used whenever the AI API is missing or fails, so these show up
+    # translated on the live site immediately rather than waiting on a key.
+    # Only Arabic is provided; French/Spanish still fall back to English
+    # until a real AI translation succeeds for those.
+    LOCAL_TRANSLATIONS = {
+        'name': {
+            'Cybersecurity': {'ar': 'الأمن السيبراني'},
+            'Artificial Intelligence & Machine Learning': {'ar': 'الذكاء الاصطناعي وتعلم الآلة'},
+            'Mobile Development': {'ar': 'تطوير تطبيقات الهاتف'},
+            'Web Development': {'ar': 'تطوير الويب'},
+            'Tech': {'ar': 'تكنولوجيا'},
+            'Business': {'ar': 'إدارة أعمال'},
+            'Marketing': {'ar': 'تسويق'},
+            'Design': {'ar': 'تصميم'},
+        },
+    }
 
     class Meta:
         ordering = ['order', 'name']
