@@ -27,18 +27,18 @@
       <div class="w-11 h-11 rounded-full bg-brand-600 flex items-center justify-center text-xl shrink-0">
         <i class="fa-solid fa-robot text-white"></i>
       </div>
-      <div class="min-w-0">
-        <h1 class="text-lg font-bold text-white truncate">{% trans "Mendoura AI Coach" %}</h1>
-        <p class="text-xs text-gray-400">{% trans "Your 24/7 Study Partner" %}</p>
+      <div class="min-w-0 flex items-center gap-2 flex-wrap">
+        <div>
+          <h1 class="text-lg font-bold text-white truncate">{% trans "Mendoura AI Coach" %}</h1>
+          <p class="text-xs text-gray-400">{% trans "Your 24/7 Study Partner" %}</p>
+        </div>
+        {% if not ai_configured %}
+          <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wide bg-brand-600/15 text-brand-300 border border-brand-500/30">
+            <i class="fa-solid fa-flask text-[10px]"></i> {% trans "Sandbox Mode" %}
+          </span>
+        {% endif %}
       </div>
     </div>
-
-    {% if not ai_configured %}
-      <div class="mx-6 mt-4 p-3 rounded-lg bg-yellow-500/10 text-yellow-400 text-sm">
-        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-        {% blocktrans %}AI Coach isn't configured yet -- an administrator needs to set <code>AI_API_KEY</code>.{% endblocktrans %}
-      </div>
-    {% endif %}
 
     <div id="chat-log" class="flex-1 overflow-y-auto px-6 py-6 space-y-5">
       {% if not chat_messages %}
@@ -71,9 +71,8 @@
     <form id="chat-form" class="border-t border-gray-800 px-4 py-4 flex items-end gap-3">
       {% csrf_token %}
       <textarea id="chat-input" rows="1" maxlength="6000" placeholder="{% trans "Ask your AI Coach anything..." %}"
-                {% if not ai_configured %}disabled{% endif %}
                 class="flex-1 resize-none bg-gray-900 text-gray-100 placeholder-gray-500 rounded-xl px-4 py-3 text-sm border border-gray-800 focus:ring-2 focus:ring-brand-500 outline-none disabled:opacity-50"></textarea>
-      <button type="submit" id="chat-send" {% if not ai_configured %}disabled{% endif %}
+      <button type="submit" id="chat-send"
               class="w-11 h-11 shrink-0 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed text-white flex items-center justify-center transition">
         <i class="fa-solid fa-paper-plane"></i>
       </button>

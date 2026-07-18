@@ -1755,11 +1755,17 @@ class AICoachTests(TestCase):
         self.assertContains(response, 'Welcome to Mendoura AI Coach')
         self.assertTrue(AIConversation.objects.filter(student=self.student).exists())
 
-    def test_page_shows_not_configured_banner_when_api_key_missing(self):
+    def test_page_shows_sandbox_mode_badge_when_api_key_missing(self):
         self.client.force_login(self.student)
         with override_settings(AI_API_KEY=''):
             response = self.client.get(reverse('ai_coach'))
-        self.assertContains(response, "isn't configured yet")
+        self.assertContains(response, 'Sandbox Mode')
+
+    def test_no_sandbox_badge_when_api_key_configured(self):
+        self.client.force_login(self.student)
+        with override_settings(AI_API_KEY='test-key'):
+            response = self.client.get(reverse('ai_coach'))
+        self.assertNotContains(response, 'Sandbox Mode')
 
     def test_non_student_cannot_post_message(self):
         self.client.force_login(self.instructor)
@@ -1805,7 +1811,7 @@ class AICoachTests(TestCase):
 
     @patch('courses.views.ai_coach_client.send_message')
     def test_api_error_returns_502_and_does_not_store_assistant_reply(self, mock_send):
-        mock_send.side_effect = ai_coach.AICoachError('The AI Coach is not configured yet.')
+        mock_send.side_effect = ai_coach.AICoachError('Simulated API failure.')
         self.client.force_login(self.student)
         response = self.client.post(
             reverse('ai_coach_send'), data=json.dumps({'message': 'Hi coach'}),
@@ -1845,6 +1851,38 @@ class AICoachTests(TestCase):
             content_type='application/json')
         self.assertEqual(AIConversation.objects.filter(student=self.student).count(), 1)
 
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_returns_200_with_sandbox_reply(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'Hey there'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Sandbox Mode', response.json()['reply_html'])
+
+        conversation = AIConversation.objects.get(student=self.student)
+        messages = list(conversation.messages.order_by('created_at'))
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1].role, AIMessage.Role.ASSISTANT)
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_python_keyword(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'Can you help me learn Python?'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Python Learning Path', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_study_schedule_keyword(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'Can you build me a study schedule?'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Weekly Study Schedule', response.json()['reply_html'])
+
 
 class AICoachClientTests(TestCase):
     def test_is_configured_reflects_setting(self):
@@ -1853,10 +1891,32 @@ class AICoachClientTests(TestCase):
         with override_settings(AI_API_KEY='some-key'):
             self.assertTrue(ai_coach.is_configured())
 
-    def test_send_message_raises_when_not_configured(self):
+    def test_send_message_returns_sandbox_reply_when_not_configured(self):
         with override_settings(AI_API_KEY=''):
-            with self.assertRaises(ai_coach.AICoachError):
-                ai_coach.send_message([{'role': 'user', 'content': 'hi'}])
+            reply = ai_coach.send_message([{'role': 'user', 'content': 'hi'}])
+        self.assertEqual(reply, ai_coach.SANDBOX_GENERIC_REPLY)
+
+    def test_sandbox_reply_matches_python_keywords(self):
+        for keyword in ('python', 'code', 'programming'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_PYTHON_GUIDE)
+
+    def test_sandbox_reply_matches_study_keywords(self):
+        for keyword in ('study', 'schedule', 'exam'):
+            history = [{'role': 'user', 'content': f'Help me with my {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_STUDY_SCHEDULE)
+
+    def test_sandbox_reply_falls_back_to_generic_for_unmatched_text(self):
+        history = [{'role': 'user', 'content': 'What is the meaning of life?'}]
+        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_GENERIC_REPLY)
+
+    def test_sandbox_reply_uses_most_recent_user_message(self):
+        history = [
+            {'role': 'user', 'content': 'python please'},
+            {'role': 'assistant', 'content': '...'},
+            {'role': 'user', 'content': 'actually, build me a study schedule'},
+        ]
+        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_STUDY_SCHEDULE)
 
 
 class AITranslateClientTests(TestCase):
