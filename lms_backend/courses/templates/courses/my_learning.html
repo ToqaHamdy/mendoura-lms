@@ -28,9 +28,14 @@
           </div>
         </div>
         {% if enrollment.is_complete %}
-          <a href="{% url 'certificate_view' enrollment.certificate.uuid %}" class="inline-block mt-4 text-sm font-semibold text-brand-600 hover:underline">
-            <i class="fa-solid fa-certificate mr-1"></i> {% trans "View Certificate" %}
-          </a>
+          <div class="mt-4 flex items-center gap-4">
+            <a href="{% url 'certificate_view' enrollment.certificate.uuid %}" class="text-sm font-semibold text-brand-600 hover:underline">
+              <i class="fa-solid fa-certificate mr-1"></i> {% trans "View Certificate" %}
+            </a>
+            <a href="{% url 'certificate_download' enrollment.certificate.uuid %}" class="text-sm font-semibold text-brand-600 hover:underline">
+              <i class="fa-solid fa-download mr-1"></i> {% trans "Download Certificate" %}
+            </a>
+          </div>
         {% endif %}
       </div>
     {% empty %}

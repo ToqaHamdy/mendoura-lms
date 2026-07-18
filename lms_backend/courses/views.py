@@ -576,10 +576,20 @@ def record_watch_event(request, course_id, lecture_id):
     return HttpResponse(status=204)
 
 
-# Public certificate verification page
+# Public certificate verification page -- no login required, so anyone
+# (e.g. an employer following a LinkedIn link) can confirm authenticity.
 def certificate_view(request, certificate_uuid):
     certificate = get_object_or_404(Certificate, uuid=certificate_uuid)
     return render(request, 'courses/certificate.html', {'certificate': certificate})
+
+
+def certificate_download(request, certificate_uuid):
+    certificate = get_object_or_404(Certificate, uuid=certificate_uuid)
+    if not certificate.pdf_file:
+        certificate.generate_pdf()
+    response = HttpResponse(certificate.pdf_file.read(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="certificate-{certificate.uuid}.pdf"'
+    return response
 
 
 # Student uploads/edits their homework for a lecture that accepts one.

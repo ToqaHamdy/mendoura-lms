@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django.utils.translation import get_language
 
-from . import ai_translate
+from . import ai_translate, certificates
 from .money import SUBSCRIPTION_INSTRUCTOR_SHARE, calculate_split, get_instructor_share
 
 
@@ -470,7 +470,9 @@ class Enrollment(models.Model):
 
     def issue_certificate_if_complete(self):
         if self.is_complete():
-            certificate, _created = Certificate.objects.get_or_create(enrollment=self)
+            certificate, created = Certificate.objects.get_or_create(enrollment=self)
+            if created:
+                certificate.generate_pdf()
             return certificate
         return None
 
@@ -710,9 +712,18 @@ class Certificate(models.Model):
     enrollment = models.OneToOneField(Enrollment, on_delete=models.CASCADE, related_name='certificate')
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     issued_at = models.DateTimeField(auto_now_add=True)
+    pdf_file = models.FileField(upload_to='certificates/', blank=True, null=True)
 
     def __str__(self):
         return f'Certificate for {self.enrollment}'
+
+    def generate_pdf(self):
+        """Renders the certificate PDF and saves it into pdf_file."""
+        from django.core.files.base import ContentFile
+
+        pdf_bytes = certificates.build_certificate_pdf(self)
+        self.pdf_file.save(f'certificate-{self.uuid}.pdf', ContentFile(pdf_bytes), save=True)
+        return self.pdf_file
 
 
 class AIConversation(models.Model):
