@@ -191,6 +191,13 @@ class LectureAccessControlTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
 
+@override_settings(STORAGES={
+    # Certificate PDFs are saved through the file storage backend (Cloudinary
+    # in production); swap in an in-memory backend so these tests don't
+    # attempt a real network call with empty credentials.
+    'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
 class EnrollmentAndReviewTests(TestCase):
     def setUp(self):
         self.instructor = User.objects.create_user(
@@ -230,6 +237,94 @@ class EnrollmentAndReviewTests(TestCase):
         self.client.post(reverse('mark_lecture_complete', args=[self.free_course.id, lecture.id]))
 
         self.assertTrue(Certificate.objects.filter(enrollment=enrollment).exists())
+
+    def test_certificate_not_issued_before_completion(self):
+        module = Module.objects.create(course=self.free_course, title='Module 1')
+        Lecture.objects.create(module=module, title='Lecture 1')
+        Lecture.objects.create(module=module, title='Lecture 2')
+        enrollment = Enrollment.objects.create(student=self.student, course=self.free_course)
+
+        self.assertIsNone(enrollment.issue_certificate_if_complete())
+        self.assertFalse(Certificate.objects.filter(enrollment=enrollment).exists())
+
+    def test_certificate_has_pdf_and_unique_uuid(self):
+        module = Module.objects.create(course=self.free_course, title='Module 1')
+        lecture = Lecture.objects.create(module=module, title='Only Lecture')
+        enrollment = Enrollment.objects.create(student=self.student, course=self.free_course)
+
+        self.client.force_login(self.student)
+        self.client.post(reverse('mark_lecture_complete', args=[self.free_course.id, lecture.id]))
+
+        certificate = Certificate.objects.get(enrollment=enrollment)
+        self.assertTrue(certificate.pdf_file.name)
+        self.assertTrue(certificate.pdf_file.read().startswith(b'%PDF'))
+        self.assertIsNotNone(certificate.uuid)
+
+    def test_completing_already_complete_course_does_not_duplicate_certificate(self):
+        module = Module.objects.create(course=self.free_course, title='Module 1')
+        lecture = Lecture.objects.create(module=module, title='Only Lecture')
+        enrollment = Enrollment.objects.create(student=self.student, course=self.free_course)
+
+        self.client.force_login(self.student)
+        url = reverse('mark_lecture_complete', args=[self.free_course.id, lecture.id])
+        self.client.post(url)
+        self.client.post(url)
+
+        self.assertEqual(Certificate.objects.filter(enrollment=enrollment).count(), 1)
+
+
+@override_settings(STORAGES={
+    'default': {'BACKEND': 'django.core.files.storage.InMemoryStorage'},
+    'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'},
+})
+class CertificateVerificationTests(TestCase):
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='cert_inst', password='pw', is_instructor=True,
+            first_name='Jane', last_name='Doe')
+        self.student = User.objects.create_user(
+            username='cert_student', password='pw', is_student=True,
+            first_name='John', last_name='Smith')
+        track = Track.objects.create(name='Certificates Track')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Certificate Course',
+            description='...', production_type=Course.ProductionType.SCRIPT_ONLY,
+            price=Decimal('0.00'), is_free=True, status=Course.Status.PUBLISHED,
+        )
+        module = Module.objects.create(course=self.course, title='Module 1')
+        self.lecture = Lecture.objects.create(module=module, title='Only Lecture')
+        self.enrollment = Enrollment.objects.create(student=self.student, course=self.course)
+
+    def _complete_course(self):
+        self.client.force_login(self.student)
+        self.client.post(reverse('mark_lecture_complete', args=[self.course.id, self.lecture.id]))
+        self.client.logout()
+        return Certificate.objects.get(enrollment=self.enrollment)
+
+    def test_verify_url_is_public_and_shows_names(self):
+        certificate = self._complete_course()
+
+        response = self.client.get(reverse('certificate_verify', args=[certificate.uuid]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'John Smith')
+        self.assertContains(response, 'Jane Doe')
+        self.assertContains(response, 'Certificate Course')
+
+    def test_download_returns_pdf(self):
+        certificate = self._complete_course()
+
+        response = self.client.get(reverse('certificate_download', args=[certificate.uuid]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/pdf')
+        self.assertIn('attachment', response['Content-Disposition'])
+        self.assertTrue(response.content.startswith(b'%PDF'))
+
+    def test_verify_unknown_uuid_returns_404(self):
+        import uuid as uuid_module
+        response = self.client.get(reverse('certificate_verify', args=[uuid_module.uuid4()]))
+        self.assertEqual(response.status_code, 404)
 
 
 class InstructorIsolationTests(TestCase):

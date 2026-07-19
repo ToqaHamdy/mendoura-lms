@@ -18,19 +18,31 @@
             {% trans "View Course" %}
           </a>
         </div>
-        <div class="mt-4">
-          <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-            <span>{% trans "Progress" %}</span>
-            <span>{{ enrollment.progress_percent }}%</span>
-          </div>
-          <div class="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-            <div class="h-full bg-brand-600" style="width: {{ enrollment.progress_percent }}%"></div>
-          </div>
-        </div>
         {% if enrollment.is_complete %}
-          <a href="{% url 'certificate_view' enrollment.certificate.uuid %}" class="inline-block mt-4 text-sm font-semibold text-brand-600 hover:underline">
-            <i class="fa-solid fa-certificate mr-1"></i> {% trans "View Certificate" %}
-          </a>
+          <div class="mt-4 flex items-center justify-between gap-4 flex-wrap">
+            <span class="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-3 py-1 rounded-full">
+              <i class="fa-solid fa-circle-check"></i> {% trans "Course Completed" %}
+            </span>
+            <div class="flex items-center gap-4">
+              <a href="{% url 'certificate_view' enrollment.certificate.uuid %}" class="text-sm font-semibold text-brand-600 hover:underline">
+                {% trans "View Certificate" %}
+              </a>
+              <a href="{% url 'certificate_download' enrollment.certificate.uuid %}"
+                 class="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-sm px-5 py-2.5 rounded-lg shadow-sm">
+                <i class="fa-solid fa-download"></i> {% trans "Download Certificate" %}
+              </a>
+            </div>
+          </div>
+        {% else %}
+          <div class="mt-4">
+            <div class="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+              <span>{% trans "Progress" %}</span>
+              <span>{{ enrollment.progress_percent }}%</span>
+            </div>
+            <div class="w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+              <div class="h-full bg-brand-600" style="width: {{ enrollment.progress_percent }}%"></div>
+            </div>
+          </div>
         {% endif %}
       </div>
     {% empty %}

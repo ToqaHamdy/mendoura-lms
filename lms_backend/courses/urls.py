@@ -87,6 +87,8 @@ urlpatterns = [
     path('learn/<int:course_id>/<int:lecture_id>/submit/', views.submit_homework,
          name='submit_homework'),
     path('certificates/<uuid:certificate_uuid>/', views.certificate_view, name='certificate_view'),
+    path('certificates/verify/<uuid:certificate_uuid>/', views.certificate_view, name='certificate_verify'),
+    path('certificates/<uuid:certificate_uuid>/download/', views.certificate_download, name='certificate_download'),
     path('dashboard/ai-coach/', views.ai_coach, name='ai_coach'),
     path('dashboard/ai-coach/send/', views.ai_coach_send, name='ai_coach_send'),
 ]
