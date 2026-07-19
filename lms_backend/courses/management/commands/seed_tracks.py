@@ -8,13 +8,20 @@ from courses.models import Track, TrackRoadmapStep
 # "roadmap" is the ordered set of planned course steps for that leaf track --
 # TrackRoadmapStep.course stays null until a real course is published and an
 # admin links it.
+#
+# "name_ar" is the hand-curated Arabic translation (see the modeltranslation
+# rollout this shipped alongside) -- these are the most visible strings on
+# the site (navbar, homepage cards), so they're reviewed real Arabic, not
+# machine-translated.
 TAXONOMY = [
     {
         'name': 'Tech',
+        'name_ar': 'تكنولوجيا',
         'icon': 'fa-microchip',
         'children': [
             {
                 'name': 'Artificial Intelligence & Machine Learning',
+                'name_ar': 'الذكاء الاصطناعي وتعلم الآلة',
                 'icon': 'fa-brain',
                 'roadmap': [
                     'Python for AI',
@@ -27,6 +34,7 @@ TAXONOMY = [
             },
             {
                 'name': 'Cybersecurity',
+                'name_ar': 'الأمن السيبراني',
                 'icon': 'fa-shield-halved',
                 'roadmap': [
                     'Networking Fundamentals',
@@ -39,6 +47,7 @@ TAXONOMY = [
             },
             {
                 'name': 'Web Development',
+                'name_ar': 'تطوير الويب',
                 'icon': 'fa-laptop-code',
                 'roadmap': [
                     'HTML, CSS & JavaScript Foundations',
@@ -51,6 +60,7 @@ TAXONOMY = [
             },
             {
                 'name': 'Mobile Development',
+                'name_ar': 'تطوير تطبيقات الهاتف',
                 'icon': 'fa-mobile-screen-button',
                 'roadmap': [
                     'Programming Foundations',
@@ -62,6 +72,7 @@ TAXONOMY = [
             },
             {
                 'name': 'Data Science',
+                'name_ar': 'علم البيانات',
                 'icon': 'fa-chart-line',
                 'roadmap': [
                     'Python for Data Analysis',
@@ -74,6 +85,7 @@ TAXONOMY = [
             },
             {
                 'name': 'Cloud & DevOps',
+                'name_ar': 'الحوسبة السحابية و DevOps',
                 'icon': 'fa-cloud',
                 'roadmap': [
                     'Linux & Command Line Basics',
@@ -86,6 +98,7 @@ TAXONOMY = [
             },
             {
                 'name': 'Game Development',
+                'name_ar': 'تطوير الألعاب',
                 'icon': 'fa-gamepad',
                 'roadmap': [
                     'Programming Foundations',
@@ -100,35 +113,42 @@ TAXONOMY = [
     },
     {
         'name': 'Languages',
+        'name_ar': 'اللغات',
         'icon': 'fa-language',
         'children': [
             {
                 'name': 'English',
+                'name_ar': 'اللغة الإنجليزية',
                 'icon': 'fa-comment',
                 'roadmap': ['Beginner English', 'Intermediate English', 'Business English', 'Advanced Fluency & Writing'],
             },
             {
                 'name': 'French',
+                'name_ar': 'اللغة الفرنسية',
                 'icon': 'fa-comment',
                 'roadmap': ['Beginner French', 'Intermediate French', 'Conversational French', 'Advanced French'],
             },
             {
                 'name': 'German',
+                'name_ar': 'اللغة الألمانية',
                 'icon': 'fa-comment',
                 'roadmap': ['Beginner German', 'Intermediate German', 'Conversational German', 'Advanced German'],
             },
             {
                 'name': 'Spanish',
+                'name_ar': 'اللغة الإسبانية',
                 'icon': 'fa-comment',
                 'roadmap': ['Beginner Spanish', 'Intermediate Spanish', 'Conversational Spanish', 'Advanced Spanish'],
             },
             {
                 'name': 'Italian',
+                'name_ar': 'اللغة الإيطالية',
                 'icon': 'fa-comment',
                 'roadmap': ['Beginner Italian', 'Intermediate Italian', 'Conversational Italian'],
             },
             {
                 'name': 'Turkish',
+                'name_ar': 'اللغة التركية',
                 'icon': 'fa-comment',
                 'roadmap': ['Beginner Turkish', 'Intermediate Turkish', 'Conversational Turkish'],
             },
@@ -136,10 +156,12 @@ TAXONOMY = [
     },
     {
         'name': 'Marketing',
+        'name_ar': 'تسويق',
         'icon': 'fa-bullhorn',
         'children': [
             {
                 'name': 'Digital Marketing',
+                'name_ar': 'التسويق الرقمي',
                 'icon': 'fa-chart-simple',
                 'roadmap': [
                     'Marketing Fundamentals',
@@ -151,16 +173,19 @@ TAXONOMY = [
             },
             {
                 'name': 'SEO',
+                'name_ar': 'تحسين محركات البحث',
                 'icon': 'fa-magnifying-glass-chart',
                 'roadmap': ['SEO Fundamentals', 'Keyword Research', 'On-Page & Technical SEO', 'Link Building & Off-Page SEO'],
             },
             {
                 'name': 'Content',
+                'name_ar': 'المحتوى',
                 'icon': 'fa-pen-nib',
                 'roadmap': ['Content Strategy Fundamentals', 'Copywriting Essentials', 'Content Creation for Social & Blog', 'Content Analytics'],
             },
             {
                 'name': 'Social Media',
+                'name_ar': 'التواصل الاجتماعي',
                 'icon': 'fa-share-nodes',
                 'roadmap': [
                     'Social Media Fundamentals',
@@ -173,20 +198,24 @@ TAXONOMY = [
     },
     {
         'name': 'Business',
+        'name_ar': 'إدارة أعمال',
         'icon': 'fa-briefcase',
         'children': [
             {
                 'name': 'Entrepreneurship',
+                'name_ar': 'ريادة الأعمال',
                 'icon': 'fa-rocket',
                 'roadmap': ['Foundations of Entrepreneurship', 'Business Model Design', 'Startup Fundraising', 'Growth & Scaling a Business'],
             },
             {
                 'name': 'Finance',
+                'name_ar': 'المالية',
                 'icon': 'fa-sack-dollar',
                 'roadmap': ['Financial Literacy Basics', 'Corporate Finance Fundamentals', 'Financial Modeling & Analysis', 'Investment & Portfolio Management'],
             },
             {
                 'name': 'Project Management',
+                'name_ar': 'إدارة المشاريع',
                 'icon': 'fa-diagram-project',
                 'roadmap': ['Project Management Foundations', 'Agile & Scrum', 'Project Planning & Risk Management', 'PM Capstone / Certification Prep'],
             },
@@ -194,10 +223,12 @@ TAXONOMY = [
     },
     {
         'name': 'Design',
+        'name_ar': 'تصميم',
         'icon': 'fa-palette',
         'children': [
             {
                 'name': 'UI/UX Design',
+                'name_ar': 'تصميم واجهات وتجربة المستخدم',
                 'icon': 'fa-pen-ruler',
                 'roadmap': [
                     'Design Thinking Foundations',
@@ -209,11 +240,13 @@ TAXONOMY = [
             },
             {
                 'name': 'Graphic Design',
+                'name_ar': 'التصميم الجرافيكي',
                 'icon': 'fa-swatchbook',
                 'roadmap': ['Design Principles Foundations', 'Typography & Color Theory', 'Adobe Illustrator Essentials', 'Adobe Photoshop Essentials', 'Branding & Identity Design'],
             },
             {
                 'name': 'Motion Design',
+                'name_ar': 'تصميم الموشن جرافيك',
                 'icon': 'fa-film',
                 'roadmap': ['Animation Principles', 'After Effects Foundations', 'Motion Graphics for Video', '3D Motion Basics'],
             },
@@ -245,7 +278,10 @@ class Command(BaseCommand):
         for parent_order, parent_data in enumerate(TAXONOMY):
             parent, created = Track.objects.update_or_create(
                 name=parent_data['name'],
-                defaults={'parent': None, 'icon': parent_data['icon'], 'order': parent_order},
+                defaults={
+                    'parent': None, 'icon': parent_data['icon'], 'order': parent_order,
+                    'name_ar': parent_data['name_ar'],
+                },
             )
             self.stdout.write(
                 self.style.SUCCESS(f'Created parent track: {parent.name}') if created
@@ -255,7 +291,10 @@ class Command(BaseCommand):
             for child_order, child_data in enumerate(parent_data['children']):
                 child, created = Track.objects.update_or_create(
                     name=child_data['name'],
-                    defaults={'parent': parent, 'icon': child_data['icon'], 'order': child_order},
+                    defaults={
+                        'parent': parent, 'icon': child_data['icon'], 'order': child_order,
+                        'name_ar': child_data['name_ar'],
+                    },
                 )
                 self.stdout.write(f'  {"Created" if created else "Already exists"}: {child.name}')
 

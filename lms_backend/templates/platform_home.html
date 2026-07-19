@@ -82,6 +82,16 @@
         </p>
         <p class="text-sm text-gray-400 mb-4">(~${{ plan.price_usd|floatformat:0 }}/{% if plan.interval == 'monthly' %}{% trans "mo" %}{% else %}{% trans "yr" %}{% endif %})</p>
         <p class="text-sm text-gray-500 dark:text-gray-400">{% trans "Unlimited access to every track and course." %}</p>
+        {% if plan.feature_list %}
+          <ul class="mt-4 space-y-1.5 text-sm text-gray-600 dark:text-gray-300">
+            {% for feature in plan.feature_list %}
+              <li class="flex items-start gap-2">
+                <i class="fa-solid fa-check text-brand-600 mt-0.5"></i>
+                <span>{{ feature }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
       </div>
     {% endfor %}
   </div>

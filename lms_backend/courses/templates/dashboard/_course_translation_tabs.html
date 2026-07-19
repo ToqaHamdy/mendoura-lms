@@ -1,0 +1,76 @@
+{% load i18n %}
+{% comment %}
+  Expects `form` (CourseCreationForm) in context. Renders Title/Description
+  as a tab per content language -- English required, others optional. This
+  is what the instructor writes themselves; nothing here is auto-translated.
+{% endcomment %}
+<div>
+  <label class="block text-sm font-semibold mb-2">{% trans "Course Title & Description" %}</label>
+  <p class="text-xs text-gray-400 mb-3">
+    {% trans "Optionally add your own translation for any language you can write in. English is required; the rest are optional and will simply show the English version until you add one." %}
+  </p>
+
+  <div class="flex flex-wrap gap-2 mb-4" role="tablist">
+    <button type="button" class="content-lang-tab px-3 py-1.5 rounded-lg text-sm font-semibold bg-brand-600 text-white"
+            data-lang="en" role="tab" aria-selected="true">
+      {% trans "English" %} <span class="text-xs opacity-80">({% trans "required" %})</span>
+    </button>
+    <button type="button" class="content-lang-tab px-3 py-1.5 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-gray-800"
+            data-lang="ar" role="tab" aria-selected="false">العربية</button>
+    <button type="button" class="content-lang-tab px-3 py-1.5 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-gray-800"
+            data-lang="fr" role="tab" aria-selected="false">Français</button>
+    <button type="button" class="content-lang-tab px-3 py-1.5 rounded-lg text-sm font-semibold bg-gray-100 dark:bg-gray-800"
+            data-lang="es" role="tab" aria-selected="false">Español</button>
+  </div>
+
+  <div class="content-lang-panel" data-lang="en">
+    <label class="block text-xs font-semibold text-gray-500 mb-1">{% trans "Title" %}</label>
+    {{ form.title_en }}
+    {% if form.title_en.errors %}<p class="text-xs text-red-500 mt-1">{{ form.title_en.errors|join:", " }}</p>{% endif %}
+    <label class="block text-xs font-semibold text-gray-500 mt-4 mb-1">{% trans "Description" %}</label>
+    {{ form.description_en }}
+    {% if form.description_en.errors %}<p class="text-xs text-red-500 mt-1">{{ form.description_en.errors|join:", " }}</p>{% endif %}
+  </div>
+
+  <div class="content-lang-panel hidden" data-lang="ar" dir="rtl">
+    <label class="block text-xs font-semibold text-gray-500 mb-1">العنوان</label>
+    {{ form.title_ar }}
+    <label class="block text-xs font-semibold text-gray-500 mt-4 mb-1">الوصف</label>
+    {{ form.description_ar }}
+  </div>
+
+  <div class="content-lang-panel hidden" data-lang="fr">
+    <label class="block text-xs font-semibold text-gray-500 mb-1">Titre</label>
+    {{ form.title_fr }}
+    <label class="block text-xs font-semibold text-gray-500 mt-4 mb-1">Description</label>
+    {{ form.description_fr }}
+  </div>
+
+  <div class="content-lang-panel hidden" data-lang="es">
+    <label class="block text-xs font-semibold text-gray-500 mb-1">Título</label>
+    {{ form.title_es }}
+    <label class="block text-xs font-semibold text-gray-500 mt-4 mb-1">Descripción</label>
+    {{ form.description_es }}
+  </div>
+</div>
+
+<script>
+  (function () {
+    const tabs = document.querySelectorAll('.content-lang-tab');
+    const panels = document.querySelectorAll('.content-lang-panel');
+    tabs.forEach((tab) => {
+      tab.addEventListener('click', () => {
+        const lang = tab.dataset.lang;
+        tabs.forEach((t) => {
+          const active = t.dataset.lang === lang;
+          t.classList.toggle('bg-brand-600', active);
+          t.classList.toggle('text-white', active);
+          t.classList.toggle('bg-gray-100', !active);
+          t.classList.toggle('dark:bg-gray-800', !active);
+          t.setAttribute('aria-selected', String(active));
+        });
+        panels.forEach((p) => p.classList.toggle('hidden', p.dataset.lang !== lang));
+      });
+    });
+  })();
+</script>

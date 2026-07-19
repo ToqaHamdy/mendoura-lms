@@ -9,9 +9,8 @@ from django.contrib.auth.models import AbstractUser
 from django.template.defaultfilters import slugify
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
-from django.utils.translation import get_language
 
-from . import ai_translate, certificates
+from . import certificates
 from .money import SUBSCRIPTION_INSTRUCTOR_SHARE, calculate_split, get_instructor_share
 
 
@@ -48,72 +47,7 @@ def _unique_slugify(instance, base_value, slug_field='slug'):
     return candidate
 
 
-class AutoTranslatedFieldsMixin:
-    """AI-populated per-language JSON translations for a model's designated
-    text fields. The admin/instructor-entered value is always assumed to be
-    written in SOURCE_LANGUAGE (English); on save(), any field whose source
-    text has changed (or whose translations don't yet cover every active
-    non-source language) gets a single batched translation call. Subclasses
-    must define TRANSLATABLE_FIELDS and a `{field}_translations` JSONField
-    for each entry.
-
-    Never blocks a save: if AI_API_KEY isn't configured, or the translation
-    call fails for any reason, a subclass-defined LOCAL_TRANSLATIONS
-    dictionary (if any) fills in whatever it knows about, and anything
-    still missing falls back to the English source via `_translated()`."""
-    SOURCE_LANGUAGE = 'en'
-    TRANSLATABLE_FIELDS = ()
-    # Optional per-model static fallback, keyed by field then by exact
-    # English source text: {"name": {"Cybersecurity": {"ar": "..."}}}.
-    # Used whenever the AI API is unavailable or fails, so a handful of
-    # well-known values (e.g. the seeded track catalog) show up translated
-    # immediately instead of waiting on a real API key. AI results always
-    # take priority over this when both are available.
-    LOCAL_TRANSLATIONS = {}
-
-    def _translated(self, field):
-        translations = getattr(self, f'{field}_translations') or {}
-        lang = get_language() or self.SOURCE_LANGUAGE
-        return translations.get(lang) or getattr(self, field)
-
-    def _autotranslate(self):
-        target_languages = [code for code, _label in settings.LANGUAGES if code != self.SOURCE_LANGUAGE]
-        if not target_languages:
-            return
-
-        pending = {}
-        for field in self.TRANSLATABLE_FIELDS:
-            source_value = (getattr(self, field, '') or '').strip()
-            if not source_value:
-                continue
-            translations = getattr(self, f'{field}_translations') or {}
-            stale = translations.get('__source__') != source_value
-            incomplete = any(lang not in translations for lang in target_languages)
-            if stale or incomplete:
-                pending[field] = source_value
-
-        if not pending:
-            return
-
-        results = {}
-        if ai_translate.is_configured():
-            try:
-                results = ai_translate.translate_fields(pending, target_languages)
-            except ai_translate.TranslationError:
-                results = {}
-
-        for field, source_value in pending.items():
-            translated = dict(results.get(field) or {})
-            local_fallback = self.LOCAL_TRANSLATIONS.get(field, {}).get(source_value, {})
-            for lang, text in local_fallback.items():
-                translated.setdefault(lang, text)
-            if not translated:
-                continue
-            translated['__source__'] = source_value
-            setattr(self, f'{field}_translations', translated)
-
-
-class Track(AutoTranslatedFieldsMixin, models.Model):
+class Track(models.Model):
     # Self-referencing rather than a separate "Category" model for the top level --
     # a track and its parent are the same kind of thing (name, slug, icon, ordering),
     # just nested. Two levels deep in practice (Tech -> Cybersecurity), but nothing
@@ -128,48 +62,15 @@ class Track(AutoTranslatedFieldsMixin, models.Model):
     order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
 
-    # Auto-populated by AutoTranslatedFieldsMixin -- {"ar": "...", "fr": "...", "es": "..."}.
-    name_translations = models.JSONField(default=dict, blank=True)
-    description_translations = models.JSONField(default=dict, blank=True)
-    TRANSLATABLE_FIELDS = ('name', 'description')
-
-    # Hand-written Arabic for the core seeded tracks (see seed_tracks.py) --
-    # used whenever the AI API is missing or fails, so these show up
-    # translated on the live site immediately rather than waiting on a key.
-    # Only Arabic is provided; French/Spanish still fall back to English
-    # until a real AI translation succeeds for those.
-    LOCAL_TRANSLATIONS = {
-        'name': {
-            'Cybersecurity': {'ar': 'الأمن السيبراني'},
-            'Artificial Intelligence & Machine Learning': {'ar': 'الذكاء الاصطناعي وتعلم الآلة'},
-            'Mobile Development': {'ar': 'تطوير تطبيقات الهاتف'},
-            'Web Development': {'ar': 'تطوير الويب'},
-            'Tech': {'ar': 'تكنولوجيا'},
-            'Business': {'ar': 'إدارة أعمال'},
-            'Marketing': {'ar': 'تسويق'},
-            'Design': {'ar': 'تصميم'},
-            'Languages': {'ar': 'اللغات'},
-        },
-    }
-
     class Meta:
         ordering = ['order', 'name']
 
     def __str__(self):
         return f'{self.parent.name} / {self.name}' if self.parent else self.name
 
-    @property
-    def translated_name(self):
-        return self._translated('name')
-
-    @property
-    def translated_description(self):
-        return self._translated('description')
-
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = _unique_slugify(self, self.name)
-        self._autotranslate()
         super().save(*args, **kwargs)
 
 
@@ -578,12 +479,20 @@ class Plan(models.Model):
     price_usd = models.DecimalField(max_digits=10, decimal_places=2)
     duration_days = models.PositiveIntegerField(default=365)
     is_active = models.BooleanField(default=True)
+    # One feature per line -- rendered as a bullet list. A plain TextField
+    # (rather than a JSONField list) so modeltranslation can translate it
+    # like any other text field without special-casing structured data.
+    features = models.TextField(blank=True, default='', help_text=_('One feature per line.'))
 
     class Meta:
         ordering = ['duration_days']
 
     def __str__(self):
         return self.name
+
+    @property
+    def feature_list(self):
+        return [line.strip() for line in self.features.splitlines() if line.strip()]
 
 
 class Subscription(models.Model):

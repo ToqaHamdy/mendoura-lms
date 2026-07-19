@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from modeltranslation.admin import TabbedTranslationAdmin
 from .models import (
     User, Track, TrackRoadmapStep, Course, Module, Lecture, Resource, Submission,
     Payment, Enrollment, LectureProgress, InstructorWallet, WalletTransaction,
@@ -24,7 +25,7 @@ class TrackRoadmapStepInline(admin.TabularInline):
 
 
 @admin.register(Track)
-class TrackAdmin(admin.ModelAdmin):
+class TrackAdmin(TabbedTranslationAdmin):
     list_display = ('name', 'parent', 'order', 'is_active')
     list_filter = ('is_active', 'parent')
     prepopulated_fields = {'slug': ('name',)}
@@ -32,7 +33,7 @@ class TrackAdmin(admin.ModelAdmin):
 
 
 @admin.register(Course)
-class CourseAdmin(admin.ModelAdmin):
+class CourseAdmin(TabbedTranslationAdmin):
     list_display = ('title', 'instructor', 'track', 'level', 'production_type',
                      'price', 'status', 'created_at')
     list_filter = ('status', 'production_type', 'level', 'track')
@@ -41,13 +42,13 @@ class CourseAdmin(admin.ModelAdmin):
 
 
 @admin.register(Module)
-class ModuleAdmin(admin.ModelAdmin):
+class ModuleAdmin(TabbedTranslationAdmin):
     list_display = ('title', 'course', 'order')
     list_filter = ('course',)
 
 
 @admin.register(Lecture)
-class LectureAdmin(admin.ModelAdmin):
+class LectureAdmin(TabbedTranslationAdmin):
     list_display = ('title', 'module', 'content_type', 'is_preview', 'order')
     list_filter = ('content_type', 'is_preview')
 
@@ -80,7 +81,7 @@ class EnrollmentAdmin(admin.ModelAdmin):
 
 
 @admin.register(Plan)
-class PlanAdmin(admin.ModelAdmin):
+class PlanAdmin(TabbedTranslationAdmin):
     list_display = ('name', 'interval', 'price_egp', 'price_usd', 'duration_days', 'is_active')
     list_filter = ('is_active', 'interval')
 
