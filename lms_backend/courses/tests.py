@@ -12,12 +12,12 @@ from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import timezone, translation
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.utils.translation import override as translation_override
 
-from . import ai_coach, ai_translate, paymob
+from . import ai_coach, paymob
 from .models import (
     AIConversation, AIMessage, Certificate, Course, Enrollment, InstructorWallet, Lecture, Module,
     Payment, Payout, Plan, Resource, RevenueDistribution, Review, Subscription, SubscriptionPeriod,
@@ -472,7 +472,7 @@ class CourseCreationTrackScopeTests(TestCase):
     def test_posting_a_parent_track_is_rejected(self):
         self.client.force_login(self.instructor)
         response = self.client.post(reverse('create_course'), {
-            'title': 'Broken Course', 'description': 'x', 'track': self.parent.id,
+            'title_en': 'Broken Course', 'description_en': 'x', 'track': self.parent.id,
             'level': Course.Level.BEGINNER, 'language': 'English',
             'production_type': Course.ProductionType.FULL, 'price': '0.00',
         })
@@ -502,7 +502,7 @@ class CourseVersioningTests(TestCase):
 
     def _edit(self):
         return self.client.post(reverse('edit_course', args=[self.course.id]), {
-            'title': 'Ver Course Updated', 'description': 'updated', 'track': self.course.track_id,
+            'title_en': 'Ver Course Updated', 'description_en': 'updated', 'track': self.course.track_id,
             'level': Course.Level.BEGINNER, 'language': 'English',
             'production_type': Course.ProductionType.FULL, 'price': '0.00', 'is_free': 'on',
         })
@@ -935,131 +935,122 @@ class TrackCrudTests(TestCase):
         self.assertFalse(track.is_active)
 
 
-class TrackTranslationTests(TestCase):
-    """Track.save() auto-translates name/description via the AI API. The
-    network call itself (ai_translate.translate_fields) is mocked -- these
-    tests are about the save()-time trigger/staleness/fallback logic, not
-    the Anthropic integration (that's covered by mocking, same as
-    AICoachTests)."""
+class ContentTranslationTests(TestCase):
+    """django-modeltranslation content translation: track/course names and
+    descriptions stored per-language in the DB, independent of the
+    {% trans %}-driven UI string translation."""
 
-    def test_without_ai_configured_save_succeeds_and_falls_back_to_source(self):
-        with override_settings(AI_API_KEY=''):
-            track = Track.objects.create(name='Robotics', description='Build robots.')
-        self.assertEqual(track.name_translations, {})
-        self.assertEqual(track.translated_name, 'Robotics')
-        self.assertEqual(track.translated_description, 'Build robots.')
+    def setUp(self):
+        self.instructor = User.objects.create_user(
+            username='content_inst', password='pw', is_instructor=True)
+        self.track = Track.objects.create(name='Robotics', name_ar='الروبوتات')
+        self.course = Course.objects.create(
+            instructor=self.instructor, track=self.track, title='Robotics 101',
+            description='Learn the basics of robotics.',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED,
+        )
 
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_save_populates_translations_for_every_active_language(self, mock_translate):
-        mock_translate.return_value = {
-            'name': {'ar': 'الروبوتات', 'fr': 'Robotique', 'es': 'Robótica'},
-            'description': {'ar': 'ابنِ روبوتات.', 'fr': 'Construisez des robots.', 'es': 'Construye robots.'},
-        }
-        track = Track.objects.create(name='Robotics', description='Build robots.')
-
-        mock_translate.assert_called_once()
-        fields_arg, target_languages_arg = mock_translate.call_args.args
-        self.assertEqual(fields_arg, {'name': 'Robotics', 'description': 'Build robots.'})
-        self.assertEqual(set(target_languages_arg), {'ar', 'fr', 'es'})
-
-        self.assertEqual(track.name_translations['ar'], 'الروبوتات')
-        self.assertEqual(track.name_translations['fr'], 'Robotique')
-        self.assertEqual(track.name_translations['es'], 'Robótica')
-        self.assertEqual(track.description_translations['ar'], 'ابنِ روبوتات.')
-
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_translated_name_resolves_active_language_and_falls_back_to_english(self, mock_translate):
-        mock_translate.return_value = {
-            'name': {'ar': 'الروبوتات', 'fr': 'Robotique', 'es': 'Robótica'},
-            'description': {'ar': '', 'fr': '', 'es': ''},
-        }
-        track = Track.objects.create(name='Robotics', description='')
-
+    def test_switching_to_arabic_shows_arabic_track_name(self):
         with translation_override('ar'):
-            self.assertEqual(track.translated_name, 'الروبوتات')
-        with translation_override('fr'):
-            self.assertEqual(track.translated_name, 'Robotique')
+            self.assertEqual(self.track.name, 'الروبوتات')
         with translation_override('en'):
-            self.assertEqual(track.translated_name, 'Robotics')
-        # A language with no translation available (or none active) falls back too.
-        with translation_override('de'):
-            self.assertEqual(track.translated_name, 'Robotics')
+            self.assertEqual(self.track.name, 'Robotics')
 
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_unchanged_name_does_not_retrigger_translation_on_next_save(self, mock_translate):
-        mock_translate.return_value = {'name': {'ar': 'أ', 'fr': 'f', 'es': 'e'}, 'description': {}}
-        track = Track.objects.create(name='Robotics', description='')
-        self.assertEqual(mock_translate.call_count, 1)
-
-        track.order = 5
-        track.save()
-        self.assertEqual(mock_translate.call_count, 1)
-
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_changed_name_retriggers_translation(self, mock_translate):
-        mock_translate.return_value = {'name': {'ar': 'أ', 'fr': 'f', 'es': 'e'}, 'description': {}}
-        track = Track.objects.create(name='Robotics', description='')
-        self.assertEqual(mock_translate.call_count, 1)
-
-        mock_translate.return_value = {'name': {'ar': 'ب', 'fr': 'g', 'es': 'h'}, 'description': {}}
-        track.name = 'Advanced Robotics'
-        track.save()
-        self.assertEqual(mock_translate.call_count, 2)
-        self.assertEqual(track.name_translations['ar'], 'ب')
-
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_translation_error_does_not_break_save(self, mock_translate):
-        mock_translate.side_effect = ai_translate.TranslationError('boom')
-        track = Track.objects.create(name='Robotics', description='Build robots.')
-        self.assertEqual(track.name_translations, {})
-        self.assertEqual(track.translated_name, 'Robotics')
-
-    @override_settings(AI_API_KEY='')
-    def test_local_fallback_translates_known_track_name_without_ai(self):
-        track = Track.objects.create(name='Cybersecurity')
-        self.assertEqual(track.name_translations['ar'], 'الأمن السيبراني')
+    def test_course_without_arabic_translation_falls_back_to_english_not_blank(self):
         with translation_override('ar'):
-            self.assertEqual(track.translated_name, 'الأمن السيبراني')
+            self.course.refresh_from_db()
+            self.assertEqual(self.course.title, 'Robotics 101')
+            self.assertNotEqual(self.course.title, '')
 
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_local_fallback_fills_gap_when_ai_call_fails(self, mock_translate):
-        mock_translate.side_effect = ai_translate.TranslationError('boom')
-        track = Track.objects.create(name='Web Development')
-        self.assertEqual(track.name_translations['ar'], 'تطوير الويب')
-
-    @override_settings(AI_API_KEY='test-key')
-    @patch('courses.models.ai_translate.translate_fields')
-    def test_real_ai_result_takes_priority_over_local_fallback(self, mock_translate):
-        mock_translate.return_value = {'name': {'ar': 'ترجمة حقيقية', 'fr': 'f', 'es': 'e'}}
-        track = Track.objects.create(name='Tech')
-        # The AI's own Arabic translation wins over the local dictionary entry.
-        self.assertEqual(track.name_translations['ar'], 'ترجمة حقيقية')
-
-    @override_settings(AI_API_KEY='')
-    def test_unmapped_track_name_still_falls_back_to_english_without_ai(self):
-        track = Track.objects.create(name='Robotics')
-        self.assertEqual(track.name_translations, {})
-        self.assertEqual(track.translated_name, 'Robotics')
-
-    @override_settings(AI_API_KEY='')
-    def test_local_fallback_translates_languages_track_name_without_ai(self):
-        track = Track.objects.create(name='Languages')
-        self.assertEqual(track.name_translations['ar'], 'اللغات')
+    def test_course_with_explicit_arabic_translation_shows_it(self):
+        self.course.title_ar = 'أساسيات الروبوتات'
+        self.course.save()
         with translation_override('ar'):
-            self.assertEqual(track.translated_name, 'اللغات')
+            self.course.refresh_from_db()
+            self.assertEqual(self.course.title, 'أساسيات الروبوتات')
+        with translation_override('en'):
+            self.assertEqual(self.course.title, 'Robotics 101')
 
-    @override_settings(AI_API_KEY='')
-    def test_local_fallback_only_covers_arabic_not_french_or_spanish(self):
-        track = Track.objects.create(name='Marketing')
-        self.assertEqual(track.name_translations, {'ar': 'تسويق', '__source__': 'Marketing'})
-        with translation_override('fr'):
-            self.assertEqual(track.translated_name, 'Marketing')
+    def test_plan_feature_list_splits_on_newlines(self):
+        plan = Plan.objects.create(
+            name='Pro', price_egp=Decimal('100'), price_usd=Decimal('5'),
+            features='Unlimited courses\nCertificates\n\nPriority support',
+        )
+        self.assertEqual(plan.feature_list, ['Unlimited courses', 'Certificates', 'Priority support'])
+
+
+class SeedTracksCommandTests(TestCase):
+    def test_seed_tracks_command_sets_hand_curated_arabic_names(self):
+        call_command('seed_tracks')
+        self.assertEqual(Track.objects.get(name='Cybersecurity').name_ar, 'الأمن السيبراني')
+        self.assertEqual(Track.objects.get(name='Languages').name_ar, 'اللغات')
+        self.assertEqual(Track.objects.get(name='Tech').name_ar, 'تكنولوجيا')
+
+
+class ContentLanguageFilterTests(TestCase):
+    """Course.language ("what language is this course taught in") is a
+    content filter, entirely separate from the UI language switcher."""
+
+    def setUp(self):
+        instructor = User.objects.create_user(
+            username='lang_filter_inst', password='pw', is_instructor=True)
+        track = Track.objects.create(name='Filter Track')
+        self.english_course = Course.objects.create(
+            instructor=instructor, track=track, title='English Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED, language='English',
+        )
+        self.arabic_course = Course.objects.create(
+            instructor=instructor, track=track, title='Arabic Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('0.00'), is_free=True,
+            status=Course.Status.PUBLISHED, language='Arabic',
+        )
+
+    def test_catalog_language_filter_independent_of_ui_language(self):
+        # UI stays in English throughout -- only the content-language filter changes.
+        response = self.client.get(reverse('course_catalog'), {'language': 'Arabic'})
+        self.assertContains(response, 'Arabic Course')
+        self.assertNotContains(response, 'English Course')
+
+    def test_catalog_without_filter_shows_all_languages(self):
+        response = self.client.get(reverse('course_catalog'))
+        self.assertContains(response, 'Arabic Course')
+        self.assertContains(response, 'English Course')
+
+    def test_content_language_filter_works_under_arabic_ui_too(self):
+        # Switching the UI to Arabic must not change which content-language
+        # filter applies -- they're independent axes.
+        with translation_override('ar'):
+            response = self.client.get(reverse('course_catalog'), {'language': 'English'})
+        self.assertContains(response, 'English Course')
+        self.assertNotContains(response, 'Arabic Course')
+
+    def test_search_results_language_filter(self):
+        response = self.client.get(reverse('search_results'), {'q': 'Course', 'language': 'Arabic'})
+        self.assertContains(response, 'Arabic Course')
+        self.assertNotContains(response, 'English Course')
+
+
+class RTLLayoutTests(TestCase):
+    def setUp(self):
+        self.track = Track.objects.create(name='RTL Track', name_ar='مسار الاختبار')
+
+    def test_arabic_ui_renders_rtl_direction_with_translated_content(self):
+        # set_language activates 'ar' for the rest of this process's thread
+        # until something else re-activates a language -- restore it
+        # explicitly so it can't leak into whichever test runs next.
+        self.addCleanup(translation.activate, 'en')
+        self.client.post(reverse('set_language'), {'language': 'ar', 'next': reverse('track_list')})
+        response = self.client.get(reverse('track_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dir="rtl"')
+        self.assertContains(response, 'مسار الاختبار')
+
+    def test_english_ui_renders_ltr_direction(self):
+        response = self.client.get(reverse('track_list'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'dir="ltr"')
 
 
 TEST_HMAC_SECRET = 'test-hmac-secret'
@@ -2319,20 +2310,3 @@ class AICoachClientTests(TestCase):
         reply = ai_coach._catch_all_reply(long_query)
         self.assertIn('...', reply)
 
-
-class AITranslateClientTests(TestCase):
-    def test_is_configured_reflects_setting(self):
-        with override_settings(AI_API_KEY=''):
-            self.assertFalse(ai_translate.is_configured())
-        with override_settings(AI_API_KEY='some-key'):
-            self.assertTrue(ai_translate.is_configured())
-
-    def test_translate_fields_raises_when_not_configured(self):
-        with override_settings(AI_API_KEY=''):
-            with self.assertRaises(ai_translate.TranslationError):
-                ai_translate.translate_fields({'name': 'Robotics'}, ['ar'])
-
-    @override_settings(AI_API_KEY='test-key')
-    def test_translate_fields_returns_empty_without_calling_api_when_nothing_to_translate(self):
-        self.assertEqual(ai_translate.translate_fields({}, ['ar']), {})
-        self.assertEqual(ai_translate.translate_fields({'name': 'Robotics'}, []), {})

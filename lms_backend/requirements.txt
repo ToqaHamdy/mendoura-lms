@@ -11,3 +11,4 @@ requests==2.34.2
 anthropic==0.117.0
 markdown==3.10.2
 reportlab==5.0.0
+django-modeltranslation==0.20.3

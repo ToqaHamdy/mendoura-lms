@@ -5,9 +5,23 @@
 {% block content %}
 <div class="max-w-7xl mx-auto px-6 py-12 animate-fade-in">
 
-  <div class="mb-10">
-    <h1 class="text-3xl font-extrabold">{% trans "Browse Courses" %}</h1>
-    <p class="text-gray-500 dark:text-gray-400 mt-1">{% trans "Pick a course and start learning today." %}</p>
+  <div class="mb-10 flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <h1 class="text-3xl font-extrabold">{% trans "Browse Courses" %}</h1>
+      <p class="text-gray-500 dark:text-gray-400 mt-1">{% trans "Pick a course and start learning today." %}</p>
+    </div>
+    {% if available_languages %}
+      <form method="get" class="flex items-center gap-2">
+        <label class="text-xs font-semibold uppercase text-gray-400" for="catalog-language">{% trans "Course language" %}</label>
+        <select id="catalog-language" name="language" onchange="this.form.submit()"
+                class="rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent px-3 py-2 text-sm">
+          <option value="">{% trans "Any language" %}</option>
+          {% for lang in available_languages %}
+            <option value="{{ lang }}" {% if lang == selected_language %}selected{% endif %}>{{ lang }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    {% endif %}
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

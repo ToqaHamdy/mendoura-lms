@@ -125,23 +125,47 @@ COURSE_LANGUAGE_CHOICES = [
 ]
 
 
+# Content translation (title/description) an instructor optionally fills in
+# themselves for languages they can actually write -- independent of
+# Course.language above, which just records what language the course itself
+# is taught/recorded in. Ordered to match MODELTRANSLATION_LANGUAGES/
+# settings.LANGUAGES; English is the only one required, matched to
+# MODELTRANSLATION_DEFAULT_LANGUAGE.
+CONTENT_TRANSLATION_LANGUAGES = [
+    ('en', _('English')),
+    ('ar', _('العربية')),
+    ('fr', _('Français')),
+    ('es', _('Español')),
+]
+
+
 class CourseCreationForm(forms.ModelForm):
     language = forms.ChoiceField(choices=COURSE_LANGUAGE_CHOICES, initial='English',
                                   widget=forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}))
 
     class Meta:
         model = Course
-        fields = ['title', 'description', 'track', 'level', 'language', 'production_type',
-                  'price', 'is_free', 'thumbnail', 'ai_script']
+        fields = [
+            'title_en', 'title_ar', 'title_fr', 'title_es',
+            'description_en', 'description_ar', 'description_fr', 'description_es',
+            'track', 'level', 'language', 'production_type',
+            'price', 'is_free', 'thumbnail', 'ai_script',
+        ]
         widgets = {
-            'title': forms.TextInput(attrs={
-                'placeholder': _('e.g. Introduction to Python'),
-                'class': COURSE_FORM_INPUT_CLASSES,
-            }),
-            'description': forms.Textarea(attrs={
-                'rows': 4, 'placeholder': _('What is this course about?'),
-                'class': COURSE_FORM_INPUT_CLASSES,
-            }),
+            **{
+                f'title_{code}': forms.TextInput(attrs={
+                    'placeholder': _('e.g. Introduction to Python'),
+                    'class': COURSE_FORM_INPUT_CLASSES,
+                })
+                for code, _label in CONTENT_TRANSLATION_LANGUAGES
+            },
+            **{
+                f'description_{code}': forms.Textarea(attrs={
+                    'rows': 4, 'placeholder': _('What is this course about?'),
+                    'class': COURSE_FORM_INPUT_CLASSES,
+                })
+                for code, _label in CONTENT_TRANSLATION_LANGUAGES
+            },
             'track': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
             'level': forms.Select(attrs={'class': COURSE_FORM_INPUT_CLASSES}),
             'production_type': forms.RadioSelect(),
@@ -165,6 +189,13 @@ class CourseCreationForm(forms.ModelForm):
         # has no course list of its own, so a course filed under one would
         # never surface on any student-facing browse page.
         self.fields['track'].queryset = Track.objects.filter(is_active=True, parent__isnull=False)
+
+        # English is the only required language; modeltranslation makes every
+        # per-language field optional (blank=True) at the model level since
+        # any one language might legitimately be empty, so the default-
+        # language requirement has to be enforced here in the form instead.
+        self.fields['title_en'].required = True
+        self.fields['description_en'].required = True
 
 
 # Review Form (enrolled students only, enforced in the view)

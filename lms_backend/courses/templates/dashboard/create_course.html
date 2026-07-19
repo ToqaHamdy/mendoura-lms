@@ -16,15 +16,7 @@
   <form method="post" enctype="multipart/form-data" class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 space-y-6">
     {% csrf_token %}
 
-    <div>
-      <label class="block text-sm font-semibold mb-2">{% trans "Course Title" %}</label>
-      {{ form.title }}
-    </div>
-
-    <div>
-      <label class="block text-sm font-semibold mb-2">{% trans "Description" %}</label>
-      {{ form.description }}
-    </div>
+    {% include 'dashboard/_course_translation_tabs.html' %}
 
     <div class="grid grid-cols-2 gap-4">
       <div>

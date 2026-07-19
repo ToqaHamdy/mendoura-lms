@@ -25,8 +25,8 @@ from . import ai_coach as ai_coach_client
 from . import bunny, paymob
 from .access import get_or_create_enrollment, student_has_access
 from .forms import (
-    CourseCreationForm, GradeForm, InstructorSignUpForm, LectureForm, ModuleForm,
-    PayoutRequestForm, ProfileForm, ResourceForm, ReviewForm, StudentSignUpForm,
+    COURSE_LANGUAGE_CHOICES, CourseCreationForm, GradeForm, InstructorSignUpForm, LectureForm,
+    ModuleForm, PayoutRequestForm, ProfileForm, ResourceForm, ReviewForm, StudentSignUpForm,
     SubmissionForm, TrackForm,
 )
 from .models import (
@@ -161,9 +161,24 @@ def _reenter_review_if_published(request, course):
 
 # 6. Course Catalog - Browse all published courses
 def course_catalog(request):
+    # Content-language filter -- what language the course itself is taught
+    # in (Course.language), entirely independent of the UI language the
+    # student is currently browsing in (the navbar language switcher).
+    language = request.GET.get('language', '')
     courses = _with_stats(
         Course.objects.filter(status=Course.Status.PUBLISHED)).order_by('-created_at')
-    return render(request, 'courses/catalog.html', {'courses': courses})
+    if language:
+        courses = courses.filter(language__iexact=language)
+
+    available_languages = (
+        Course.objects.filter(status=Course.Status.PUBLISHED)
+        .exclude(language='').order_by('language').values_list('language', flat=True).distinct()
+    )
+    return render(request, 'courses/catalog.html', {
+        'courses': courses,
+        'selected_language': language,
+        'available_languages': available_languages,
+    })
 
 # 7. Course Detail - View a single course + its curriculum
 def course_detail(request, course_id):
@@ -812,6 +827,7 @@ def search_results(request):
         'selected_language': language,
         'selected_track': track_slug,
         'levels': Course.Level.choices,
+        'language_choices': COURSE_LANGUAGE_CHOICES,
         'all_tracks': Track.objects.filter(parent__isnull=False, is_active=True).order_by('name'),
     })
 

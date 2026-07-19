@@ -44,6 +44,9 @@ if not DEBUG:
 # Application definition
 
 INSTALLED_APPS = [
+    # Must load before django.contrib.admin so its admin template overrides
+    # (the tabbed per-language fieldsets) actually take effect.
+    'modeltranslation',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -142,6 +145,20 @@ LANGUAGES = [
     ('es', 'Español'),
 ]
 LOCALE_PATHS = [BASE_DIR / 'locale']
+
+# django-modeltranslation: DATABASE content (track names, course titles,
+# module/lecture titles, plan names) rather than UI strings -- {% trans %}
+# only covers strings baked into templates/code. Separate from the UI
+# LANGUAGES/LocaleMiddleware above: this is about which language a piece of
+# *content* was written/curated in, not which language the chrome shows.
+MODELTRANSLATION_DEFAULT_LANGUAGE = 'en'
+MODELTRANSLATION_LANGUAGES = ('en', 'ar', 'fr', 'es')
+# Missing translations fall back to English rather than rendering blank --
+# critical for the 131 instructor-authored courses that will never get a
+# manual Arabic/French/Spanish translation (see Course.language: content
+# language is independent of UI language, and we deliberately don't
+# auto-translate instructor content).
+MODELTRANSLATION_FALLBACK_LANGUAGES = ('en',)
 
 TIME_ZONE = 'UTC'
 
