@@ -1,5 +1,5 @@
 from django import forms
-from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
 from django.utils.translation import gettext_lazy as _
 from .models import (
     User, Course, InstructorWallet, Lecture, Module, Resource, Submission, Track,
@@ -55,6 +55,7 @@ class StudentSignUpForm(DuplicateGuardMixin, UserCreationForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.is_student = True
+        user.is_approved = False
         if commit:
             user.save()
         return user
@@ -79,10 +80,24 @@ class InstructorSignUpForm(DuplicateGuardMixin, UserCreationForm):
     def save(self, commit=True):
         user = super().save(commit=False)
         user.is_instructor = True
+        user.is_approved = False
         if commit:
             user.save()
             InstructorWallet.objects.get_or_create(instructor=user)
         return user
+
+
+# Used by the login view (see urls.py) instead of the default
+# AuthenticationForm so a pending signup gets a clear, specific reason for
+# the rejected login instead of Django's generic "inactive account" copy.
+class ApprovalAwareAuthenticationForm(AuthenticationForm):
+    def confirm_login_allowed(self, user):
+        super().confirm_login_allowed(user)
+        if not user.is_approved:
+            raise forms.ValidationError(
+                _('Your account is currently pending administrator approval.'),
+                code='pending_approval',
+            )
 
 
 # 3. Course Creation Form
