@@ -917,6 +917,13 @@ class TrackTranslationTests(TestCase):
         self.assertEqual(track.translated_name, 'Robotics')
 
     @override_settings(AI_API_KEY='')
+    def test_local_fallback_translates_languages_track_name_without_ai(self):
+        track = Track.objects.create(name='Languages')
+        self.assertEqual(track.name_translations['ar'], 'اللغات')
+        with translation_override('ar'):
+            self.assertEqual(track.translated_name, 'اللغات')
+
+    @override_settings(AI_API_KEY='')
     def test_local_fallback_only_covers_arabic_not_french_or_spanish(self):
         track = Track.objects.create(name='Marketing')
         self.assertEqual(track.name_translations, {'ar': 'تسويق', '__source__': 'Marketing'})

@@ -143,6 +143,7 @@ class Track(AutoTranslatedFieldsMixin, models.Model):
             'Business': {'ar': 'إدارة أعمال'},
             'Marketing': {'ar': 'تسويق'},
             'Design': {'ar': 'تصميم'},
+            'Languages': {'ar': 'اللغات'},
         },
     }
 
