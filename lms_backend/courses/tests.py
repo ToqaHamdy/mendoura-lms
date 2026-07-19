@@ -2031,6 +2031,53 @@ class AICoachTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('Weekly Study Schedule', response.json()['reply_html'])
 
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_math_science_keyword_in_arabic(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'عايز افهم فيزياء'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Math &amp; Science', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_career_keyword(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'Can you help me prep for a job interview?'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Career &amp; Interview Prep Kit', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_design_keyword(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'How do I get better at Figma and UX design?'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Design Fundamentals', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_matches_productivity_keyword_in_arabic(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'), data=json.dumps({'message': 'محتاج تحفيز وتنظيم وقتي'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Focus &amp; Productivity Framework', response.json()['reply_html'])
+
+    @override_settings(AI_API_KEY='')
+    def test_send_without_ai_configured_unmatched_query_gets_dynamic_catch_all(self):
+        self.client.force_login(self.student)
+        response = self.client.post(
+            reverse('ai_coach_send'),
+            data=json.dumps({'message': 'What is the meaning of life anyway?'}),
+            content_type='application/json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('How to Structurally Analyze Any Topic', response.json()['reply_html'])
+        self.assertIn('meaning of life', response.json()['reply_html'])
+
 
 class AICoachClientTests(TestCase):
     def test_is_configured_reflects_setting(self):
@@ -2042,7 +2089,7 @@ class AICoachClientTests(TestCase):
     def test_send_message_returns_sandbox_reply_when_not_configured(self):
         with override_settings(AI_API_KEY=''):
             reply = ai_coach.send_message([{'role': 'user', 'content': 'hi'}])
-        self.assertEqual(reply, ai_coach.SANDBOX_GENERAL_REPLY)
+        self.assertEqual(reply, ai_coach._catch_all_reply('hi'))
 
     def test_sandbox_reply_matches_tech_keywords(self):
         for keyword in ('python', 'js', 'javascript', 'html', 'code', 'bug', 'web'):
@@ -2064,14 +2111,40 @@ class AICoachClientTests(TestCase):
             history = [{'role': 'user', 'content': f'Help me with my {keyword}'}]
             self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_STUDY_SCHEDULE)
 
+    def test_sandbox_reply_matches_math_science_keywords(self):
+        for keyword in ('math', 'physics', 'science', 'calculus', 'equation', 'رياضيات', 'فيزياء', 'علوم'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_MATH_SCIENCE_GUIDE)
+
+    def test_sandbox_reply_matches_career_keywords(self):
+        for keyword in ('job', 'resume', 'interview', 'career', 'cv', 'وظيفة', 'مقابلة', 'سيرة ذاتية'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_CAREER_GUIDE)
+
+    def test_sandbox_reply_matches_design_keywords(self):
+        for keyword in ('ui', 'ux', 'design', 'photoshop', 'figma', 'colors', 'تصميم', 'فوتوشوب'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_DESIGN_GUIDE)
+
+    def test_sandbox_reply_matches_productivity_keywords(self):
+        for keyword in ('focus', 'time management', 'motivation', 'تركيز', 'وقت', 'تنظيم', 'تحفيز'):
+            history = [{'role': 'user', 'content': f'Tell me about {keyword}'}]
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_PRODUCTIVITY_GUIDE)
+
+    def test_design_ui_keyword_does_not_false_positive_on_substring(self):
+        # "build" contains the letters "ui" -- must not be misread as the
+        # design keyword "ui" thanks to word-boundary matching.
+        history = [{'role': 'user', 'content': 'Can you build me a study schedule?'}]
+        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_STUDY_SCHEDULE)
+
     def test_sandbox_reply_matches_general_chitchat_keywords(self):
         for keyword in ('hi', 'hello', 'help', 'explain', 'how to', 'why', 'what is'):
             history = [{'role': 'user', 'content': f'{keyword} there'}]
-            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_GENERAL_REPLY)
+            self.assertEqual(ai_coach._sandbox_reply(history), ai_coach._catch_all_reply(f'{keyword} there'))
 
     def test_sandbox_reply_falls_back_to_general_for_unmatched_text(self):
         history = [{'role': 'user', 'content': 'asdfghjkl'}]
-        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_GENERAL_REPLY)
+        self.assertEqual(ai_coach._sandbox_reply(history), ai_coach._catch_all_reply('asdfghjkl'))
 
     def test_sandbox_reply_uses_most_recent_user_message(self):
         history = [
@@ -2080,6 +2153,33 @@ class AICoachClientTests(TestCase):
             {'role': 'user', 'content': 'actually, build me a study schedule'},
         ]
         self.assertEqual(ai_coach._sandbox_reply(history), ai_coach.SANDBOX_STUDY_SCHEDULE)
+
+    def test_catch_all_reply_restates_the_users_query(self):
+        reply = ai_coach._catch_all_reply('How do black holes actually form?')
+        self.assertIn('How do black holes actually form?', reply)
+        self.assertIn('How to Structurally Analyze Any Topic', reply)
+        self.assertIn('| Step | Focus | What To Do |', reply)
+
+    def test_catch_all_reply_prefix_is_chosen_deterministically_by_input_length(self):
+        text = 'x' * 7
+        expected_prefix = ai_coach.CATCH_ALL_PREFIXES[len(text) % len(ai_coach.CATCH_ALL_PREFIXES)]
+        self.assertIn(expected_prefix, ai_coach._catch_all_reply(text))
+
+        other_text = 'x' * 9
+        other_prefix = ai_coach.CATCH_ALL_PREFIXES[len(other_text) % len(ai_coach.CATCH_ALL_PREFIXES)]
+        self.assertNotEqual(expected_prefix, other_prefix)
+        self.assertIn(other_prefix, ai_coach._catch_all_reply(other_text))
+
+    def test_catch_all_reply_is_deterministic_for_the_same_input(self):
+        self.assertEqual(
+            ai_coach._catch_all_reply('what should I learn next'),
+            ai_coach._catch_all_reply('what should I learn next'),
+        )
+
+    def test_catch_all_reply_truncates_very_long_queries(self):
+        long_query = 'why ' * 50
+        reply = ai_coach._catch_all_reply(long_query)
+        self.assertIn('...', reply)
 
 
 class AITranslateClientTests(TestCase):
