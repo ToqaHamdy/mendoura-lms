@@ -692,6 +692,137 @@ class AdminGuardTests(TestCase):
         self.assertEqual(response.status_code, 302)
 
 
+class SignupApprovalFlowTests(TestCase):
+    def _signup_data(self, **overrides):
+        data = {
+            'username': 'newbie', 'email': 'newbie@example.com', 'phone_number': '+201001112222',
+            'password1': 'a-strong-password-1', 'password2': 'a-strong-password-1',
+        }
+        data.update(overrides)
+        return data
+
+    def test_student_signup_creates_unapproved_pending_account(self):
+        self.client.post(reverse('student_signup'), self._signup_data())
+        user = User.objects.get(username='newbie')
+        self.assertTrue(user.is_student)
+        self.assertFalse(user.is_approved)
+
+    def test_instructor_signup_creates_unapproved_pending_account(self):
+        self.client.post(reverse('instructor_signup'), self._signup_data(username='newbie_inst'))
+        user = User.objects.get(username='newbie_inst')
+        self.assertTrue(user.is_instructor)
+        self.assertFalse(user.is_approved)
+
+    def test_signup_does_not_auto_login(self):
+        response = self.client.post(reverse('student_signup'), self._signup_data(), follow=True)
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+    def test_signup_redirects_to_login_with_pending_message(self):
+        response = self.client.post(reverse('student_signup'), self._signup_data(), follow=True)
+        self.assertRedirects(response, reverse('login'))
+        self.assertContains(response, 'pending administrator approval')
+
+    def test_unapproved_user_cannot_login(self):
+        self.client.post(reverse('student_signup'), self._signup_data())
+        response = self.client.post(reverse('login'), {'username': 'newbie', 'password': 'a-strong-password-1'})
+        self.assertContains(response, 'Your account is currently pending administrator approval.')
+        self.assertFalse(response.wsgi_request.user.is_authenticated)
+
+    def test_approved_user_can_login_normally(self):
+        user = User.objects.create_user(username='approved_stud', password='pw', is_student=True)
+        self.assertTrue(user.is_approved)
+        response = self.client.post(reverse('login'), {'username': 'approved_stud', 'password': 'pw'}, follow=True)
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+
+class AdminUserManagementTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username='mgmt_admin', password='pw')
+        self.pending = User.objects.create_user(
+            username='pending_stud', password='pw', is_student=True, is_approved=False)
+        self.student = User.objects.create_user(
+            username='active_stud', password='pw', is_student=True)
+        self.instructor = User.objects.create_user(
+            username='active_inst', password='pw', is_instructor=True)
+
+    def test_admin_users_page_lists_pending_students_and_instructors_separately(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('admin_users'))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'pending_stud')
+        self.assertContains(response, 'active_stud')
+        self.assertContains(response, 'active_inst')
+
+    def test_admin_can_approve_pending_user(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('approve_user', args=[self.pending.id]))
+        self.assertRedirects(response, reverse('admin_users'))
+        self.pending.refresh_from_db()
+        self.assertTrue(self.pending.is_approved)
+
+    def test_admin_can_reject_pending_user_and_it_is_deleted(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('reject_user', args=[self.pending.id]))
+        self.assertRedirects(response, reverse('admin_users'))
+        self.assertFalse(User.objects.filter(id=self.pending.id).exists())
+
+    def test_reject_does_not_affect_already_approved_user(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('reject_user', args=[self.student.id]))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(User.objects.filter(id=self.student.id).exists())
+
+    def test_admin_can_delete_active_student(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('delete_user', args=[self.student.id]))
+        self.assertRedirects(response, reverse('admin_users'))
+        self.assertFalse(User.objects.filter(id=self.student.id).exists())
+
+    def test_admin_can_delete_active_instructor(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('delete_user', args=[self.instructor.id]))
+        self.assertRedirects(response, reverse('admin_users'))
+        self.assertFalse(User.objects.filter(id=self.instructor.id).exists())
+
+    def test_admin_cannot_delete_own_account(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('delete_user', args=[self.admin.id]))
+        self.assertRedirects(response, reverse('admin_users'))
+        self.assertTrue(User.objects.filter(id=self.admin.id).exists())
+
+    def test_admin_cannot_delete_another_superuser(self):
+        other_admin = User.objects.create_superuser(username='other_admin', password='pw')
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('delete_user', args=[other_admin.id]))
+        self.assertRedirects(response, reverse('admin_users'))
+        self.assertTrue(User.objects.filter(id=other_admin.id).exists())
+
+    def test_delete_user_with_protected_history_shows_error_instead_of_crashing(self):
+        track = Track.objects.create(name='Delete-Protected Track')
+        course = Course.objects.create(
+            instructor=self.instructor, track=track, title='Protected Course', description='...',
+            production_type=Course.ProductionType.FULL, price=Decimal('10.00'))
+        Payment.objects.create(student=self.student, course=course, total_amount=Decimal('10.00'))
+
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('delete_user', args=[self.student.id]), follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(User.objects.filter(id=self.student.id).exists())
+        self.assertContains(response, 'has payment or revenue history')
+
+    def test_non_admin_cannot_approve_reject_or_delete_users(self):
+        self.client.force_login(self.student)
+        for name, args in (
+            ('approve_user', [self.pending.id]),
+            ('reject_user', [self.pending.id]),
+            ('delete_user', [self.instructor.id]),
+        ):
+            response = self.client.post(reverse(name, args=args))
+            self.assertNotEqual(response.status_code, 200)
+        self.assertFalse(User.objects.get(id=self.pending.id).is_approved)
+        self.assertTrue(User.objects.filter(id=self.instructor.id).exists())
+
+
 class CourseApprovalTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username='approver', password='pw')

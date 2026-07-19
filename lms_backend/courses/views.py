@@ -8,7 +8,6 @@ from functools import wraps
 import markdown
 import requests
 from django.contrib import messages
-from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
@@ -73,9 +72,12 @@ def student_signup(request):
     if request.method == 'POST':
         form = StudentSignUpForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect('platform_home')
+            form.save()
+            messages.success(
+                request,
+                _("Your account has been created and is pending administrator approval. "
+                  "You'll be able to log in once it's approved."))
+            return redirect('login')
     else:
         form = StudentSignUpForm()
     return render(request, 'registration/signup_student.html', {'form': form})
@@ -85,9 +87,12 @@ def instructor_signup(request):
     if request.method == 'POST':
         form = InstructorSignUpForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect('instructor_dashboard')
+            form.save()
+            messages.success(
+                request,
+                _("Your account has been created and is pending administrator approval. "
+                  "You'll be able to log in once it's approved."))
+            return redirect('login')
     else:
         form = InstructorSignUpForm()
     return render(request, 'registration/signup_instructor.html', {'form': form})
@@ -1265,18 +1270,59 @@ def reject_course(request, course_id):
     return redirect('course_approval_queue')
 
 
-# Users table, filterable by role
+# Pending registrations awaiting approval, plus separate Students/Instructors
+# management tables for everyone already approved.
 @admin_required
 def admin_users(request):
-    users = User.objects.all().order_by('-date_joined')
-    role = request.GET.get('role')
-    if role == 'student':
-        users = users.filter(is_student=True)
-    elif role == 'instructor':
-        users = users.filter(is_instructor=True)
-    elif role == 'admin':
-        users = users.filter(is_superuser=True)
-    return render(request, 'dashboard/admin_users.html', {'users': users, 'role': role})
+    pending_users = User.objects.filter(is_approved=False).order_by('-date_joined')
+    students = User.objects.filter(is_student=True, is_approved=True).order_by('-date_joined')
+    instructors = User.objects.filter(is_instructor=True, is_approved=True).order_by('-date_joined')
+    return render(request, 'dashboard/admin_users.html', {
+        'pending_users': pending_users,
+        'students': students,
+        'instructors': instructors,
+    })
+
+
+@admin_required
+def approve_user(request, user_id):
+    user = get_object_or_404(User, id=user_id, is_approved=False)
+    if request.method == 'POST':
+        user.is_approved = True
+        user.save()
+        messages.success(request, _('%(username)s has been approved.') % {'username': user.username})
+    return redirect('admin_users')
+
+
+@admin_required
+def reject_user(request, user_id):
+    user = get_object_or_404(User, id=user_id, is_approved=False)
+    if request.method == 'POST':
+        username = user.username
+        user.delete()
+        messages.success(request, _('%(username)s\'s registration was rejected and removed.') % {'username': username})
+    return redirect('admin_users')
+
+
+@admin_required
+def delete_user(request, user_id):
+    user = get_object_or_404(User, id=user_id)
+    if request.method == 'POST':
+        if user == request.user:
+            messages.error(request, _("You can't delete your own account."))
+        elif user.is_superuser:
+            messages.error(request, _("Admin accounts can't be deleted from here."))
+        else:
+            username = user.username
+            try:
+                user.delete()
+                messages.success(request, _('%(username)s was permanently deleted.') % {'username': username})
+            except ProtectedError:
+                messages.error(
+                    request,
+                    _('%(username)s has payment or revenue history and can\'t be deleted.')
+                    % {'username': username})
+    return redirect('admin_users')
 
 
 # Payments table

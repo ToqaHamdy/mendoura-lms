@@ -22,6 +22,11 @@ class User(AbstractUser):
     # Uses the default storage backend (Cloudinary -- see STORAGES in
     # settings.py), same as course thumbnails.
     avatar = models.ImageField(upload_to='avatars/', blank=True, null=True)
+    # Defaults to True so every existing account (admins, seeded users, any
+    # User created outside the public signup forms) stays unaffected -- only
+    # StudentSignUpForm/InstructorSignUpForm explicitly flip this to False,
+    # putting new self-service signups into a pending-admin-review state.
+    is_approved = models.BooleanField(default=True)
 
     def __str__(self):
         return self.username

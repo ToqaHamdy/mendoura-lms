@@ -1,12 +1,16 @@
 from django.urls import path, reverse_lazy
 from django.contrib.auth import views as auth_views
 from . import views
+from .forms import ApprovalAwareAuthenticationForm
 
 urlpatterns = [
     path('', views.platform_home, name='platform_home'),
     path('signup/student/', views.student_signup, name='student_signup'),
     path('signup/instructor/', views.instructor_signup, name='instructor_signup'),
-    path('login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
+    path('login/', auth_views.LoginView.as_view(
+        template_name='registration/login.html',
+        authentication_form=ApprovalAwareAuthenticationForm,
+    ), name='login'),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),
 
     # Password reset -- Django's built-in views, Mendoura's own templates.
@@ -46,6 +50,9 @@ urlpatterns = [
     path('dashboard/admin/courses/<int:course_id>/approve/', views.approve_course, name='approve_course'),
     path('dashboard/admin/courses/<int:course_id>/reject/', views.reject_course, name='reject_course'),
     path('dashboard/admin/users/', views.admin_users, name='admin_users'),
+    path('dashboard/admin/users/<int:user_id>/approve/', views.approve_user, name='approve_user'),
+    path('dashboard/admin/users/<int:user_id>/reject/', views.reject_user, name='reject_user'),
+    path('dashboard/admin/users/<int:user_id>/delete/', views.delete_user, name='delete_user'),
     path('dashboard/admin/payments/', views.admin_payments, name='admin_payments'),
     path('dashboard/admin/payouts/', views.admin_payouts, name='admin_payouts'),
     path('dashboard/admin/payouts/<int:payout_id>/approve/', views.approve_payout, name='approve_payout'),
